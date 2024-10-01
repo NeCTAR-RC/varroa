@@ -9,7 +9,7 @@ build:
 	echo "Derived image tag: $(DESCRIBE)"
 	echo "Actual image tag: $(IMAGE_TAG)"
 	rm -rf dist/
-	python3 setup.py sdist
+	python3 -m build
 	$(BUILDER) build $(BUILDER_ARGS) -t $(IMAGE) .
 push:
 	$(BUILDER) push $(IMAGE)
