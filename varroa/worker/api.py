@@ -31,7 +31,7 @@ class WorkerAPI:
         target = oslo_messaging.Target(
             topic='varroa-worker', version=API_VERSION
         )
-        self._client = oslo_messaging.RPCClient(rpc.TRANSPORT, target)
+        self._client = rpc.get_client(target)
 
     def process_security_risk(self, ctxt, security_risk_id):
         cctxt = self._client.prepare(version='1.0')
