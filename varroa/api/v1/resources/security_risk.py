@@ -52,6 +52,8 @@ class SecurityRiskList(base.Resource):
         parser.add_argument('all_projects', type=bool, location='args')
         parser.add_argument('project_id', type=str, location='args')
         parser.add_argument('type_id', type=str, location='args')
+        parser.add_argument('resource_id', type=str, location='args')
+        parser.add_argument('resource_type', type=str, location='args')
         args = parser.parse_args()
         query = self._get_security_risks(self.context.project_id)
         if self.authorize('list:all', do_raise=False):
@@ -61,6 +63,10 @@ class SecurityRiskList(base.Resource):
 
         if args.get('type_id'):
             query = query.filter_by(type_id=args.get('type_id'))
+        if args.get('resource_id'):
+            query = query.filter_by(type_id=args.get('resource_id'))
+        if args.get('resource_type'):
+            query = query.filter_by(type_id=args.get('resource_type'))
 
         return self.paginate(query, args)
 
