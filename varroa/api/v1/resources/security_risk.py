@@ -64,9 +64,9 @@ class SecurityRiskList(base.Resource):
         if args.get('type_id'):
             query = query.filter_by(type_id=args.get('type_id'))
         if args.get('resource_id'):
-            query = query.filter_by(type_id=args.get('resource_id'))
+            query = query.filter_by(resource_id=args.get('resource_id'))
         if args.get('resource_type'):
-            query = query.filter_by(type_id=args.get('resource_type'))
+            query = query.filter_by(resource_type=args.get('resource_type'))
 
         return self.paginate(query, args)
 
