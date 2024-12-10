@@ -71,6 +71,26 @@ class TestAdminSecurityRiskTypesAPI(base.ApiTestCase):
         created_risk_type = response.get_json()
         self.assertEqual(data['name'], created_risk_type['name'])
         self.assertEqual(data['description'], created_risk_type['description'])
+        self.assertIsNone(created_risk_type['help_url'])
+        self.assertIsNone(created_risk_type['display_name'])
+
+    def test_security_risk_type_create_optionals(self):
+        data = {
+            "name": "test-risk-type",
+            "description": "This is a test security risk type",
+            "display_name": "Test Risk Type 2",
+            "help_url": "http://example.org/security-help",
+        }
+        response = self.client.post("/v1/security-risk-types/", json=data)
+
+        self.assertStatus(response, 201)
+        created_risk_type = response.get_json()
+        self.assertEqual(data['name'], created_risk_type['name'])
+        self.assertEqual(data['description'], created_risk_type['description'])
+        self.assertEqual(data['help_url'], created_risk_type['help_url'])
+        self.assertEqual(
+            data['display_name'], created_risk_type['display_name']
+        )
 
     def test_security_risk_type_delete(self):
         risk_type = self.create_security_risk_type()

@@ -31,3 +31,9 @@ class TestModels(base.TestCase):
         )
         self.assertEqual(models.SecurityRisk.NEW, sr.status)
         self.assertIsNone(sr.port)
+
+    def test_security_risk_type_str(self):
+        sr_type = self.create_security_risk_type()
+        self.assertEqual(sr_type.__str__(), sr_type.name)
+        sr_type.display_name = 'test_security_risk_type_str'
+        self.assertEqual(sr_type.__str__(), sr_type.display_name)

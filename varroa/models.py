@@ -55,12 +55,19 @@ class IPUsage(db.Model):
 class SecurityRiskType(db.Model):
     id = db.Column(db.String(64), primary_key=True)
     name = db.Column(db.String(64), nullable=False)
+    display_name = db.Column(db.String(64))
     description = db.Column(db.Text())
+    help_url = db.Column(db.String(255))
 
-    def __init__(self, name, description):
+    def __init__(self, name, description, display_name=None, help_url=None):
         self.id = uuidutils.generate_uuid()
         self.name = name
         self.description = description
+        self.display_name = display_name
+        self.help_url = help_url
+
+    def __str__(self):
+        return self.display_name or self.name
 
 
 class SecurityRisk(db.Model):
