@@ -21,6 +21,7 @@ from oslo_config import cfg
 from varroa.common import service
 from varroa.worker import consumer
 from varroa.worker import manager
+from varroa.worker import periodic
 
 CONF = cfg.CONF
 
@@ -33,6 +34,11 @@ def main():
     m = manager.Manager()
     sm.add(
         consumer.ConsumerService, workers=CONF.worker.workers, args=(CONF, m)
+    )
+    sm.add(
+        periodic.PeriodicTaskService,
+        workers=CONF.worker.workers,
+        args=(CONF, m),
     )
     oslo_config_glue.setup(sm, CONF, reload_method="mutate")
     sm.run()

@@ -14,6 +14,8 @@
 import datetime
 from unittest import mock
 
+from freezegun import freeze_time
+
 from varroa import models
 from varroa.tests.unit import base
 from varroa.worker import manager as worker_manager
@@ -187,3 +189,20 @@ class TestManager(base.TestCase):
         result = manager._find_and_create_ip_usage(security_risk)
 
         self.assertEqual(result, existing_ip_usage)
+
+    @freeze_time("2024-01-01")
+    def test_clean_expired_risks(self, mock_create_app):
+        expired_risk = self.create_security_risk(
+            expires=datetime.datetime(2020, 1, 1)
+        )
+        non_expired_risk = self.create_security_risk(
+            expires=datetime.datetime(2025, 1, 1)
+        )
+
+        manager = worker_manager.Manager()
+        manager.clean_expired_risks()
+
+        self.assertIsNone(models.SecurityRisk.query.get(expired_risk.id))
+        self.assertIsNotNone(
+            models.SecurityRisk.query.get(non_expired_risk.id)
+        )

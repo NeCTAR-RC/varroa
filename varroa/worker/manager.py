@@ -151,3 +151,17 @@ class Manager:
         db.session.commit()
         LOG.debug("Created new IP usage for %s", ipaddress)
         return ip_usage
+
+    @app_context
+    def clean_expired_risks(self):
+        LOG.info("Cleaning expired risks")
+        now = datetime.datetime.now()
+        risks = (
+            db.session.query(models.SecurityRisk)
+            .filter(models.SecurityRisk.expires < now)
+            .all()
+        )
+        for risk in risks:
+            LOG.info(f"Deleting expired risk {risk}")
+            db.session.delete(risk)
+        db.session.commit()
