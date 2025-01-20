@@ -16,6 +16,7 @@ from unittest import mock
 
 from freezegun import freeze_time
 
+from varroa.extensions import db
 from varroa import models
 from varroa.tests.unit import base
 from varroa.worker import manager as worker_manager
@@ -76,6 +77,39 @@ class TestManager(base.TestCase):
         self.assertEqual(new_ip_usage.port_id, 'fake-port-id')
         self.assertEqual(new_ip_usage.resource_id, 'fake-device-id')
         self.assertEqual(new_ip_usage.resource_type, 'instance')
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_dupe_risk(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # Create a security risk and an existing IP usage
+        manager = worker_manager.Manager()
+        security_risk = self.create_security_risk()
+        ip_usage = self.create_ip_usage()
+
+        # Create an existing risk with same resource and type
+        esr = self.create_security_risk(
+            time=datetime.datetime(2019, 1, 1),
+            expires=datetime.datetime(2019, 2, 1),
+        )
+        esr.resource_id = ip_usage.resource_id
+        esr.project_id = ip_usage.project_id
+        esr.type_id = security_risk.type_id
+        esr.status = models.SecurityRisk.PROCESSED
+        db.session.add(esr)
+        db.session.commit()
+
+        manager.process_security_risk(security_risk.id)
+
+        # Check that the existing risk was updated
+        updated_esr = models.SecurityRisk.query.get(esr.id)
+        self.assertEqual(updated_esr.expires, security_risk.expires)
+        self.assertEqual(updated_esr.time, security_risk.time)
+        self.assertEqual(updated_esr.last_seen, security_risk.last_seen)
+        self.assertEqual(updated_esr.first_seen, esr.first_seen)
+
+        # Check that the security risk was deleted
+        self.assertIsNone(models.SecurityRisk.query.get(security_risk.id))
 
     @mock.patch('varroa.worker.manager.clients.get_openstack')
     def test_find_and_create_ip_usage_success(

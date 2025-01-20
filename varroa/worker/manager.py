@@ -92,7 +92,24 @@ class Manager:
                 security_risk.ipaddress,
                 ip_usage.resource_id,
             )
-        db.session.add(security_risk)
+        dupe_security_risk = (
+            db.session.query(models.SecurityRisk)
+            .filter_by(resource_id=security_risk.resource_id)
+            .filter_by(type_id=security_risk.type_id)
+            .filter(models.SecurityRisk.id != security_risk.id)
+            .filter_by(status=models.SecurityRisk.PROCESSED)
+            .first()
+        )
+        if dupe_security_risk:
+            LOG.info("Found duplicate security risk, updating")
+            dupe_security_risk.time = security_risk.time
+            dupe_security_risk.last_seen = security_risk.time
+            dupe_security_risk.expires = security_risk.expires
+            db.session.add(dupe_security_risk)
+            db.session.delete(security_risk)
+        else:
+            db.session.add(security_risk)
+
         db.session.commit()
 
     def _find_and_create_ip_usage(self, security_risk):

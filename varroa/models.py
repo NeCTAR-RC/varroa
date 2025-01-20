@@ -76,6 +76,8 @@ class SecurityRisk(db.Model):
 
     id = db.Column(db.String(64), primary_key=True)
     status = db.Column(db.String(16), nullable=False)
+    first_seen = db.Column(db.DateTime(), nullable=False)
+    last_seen = db.Column(db.DateTime(), nullable=False)
     time = db.Column(db.DateTime(), nullable=False)
     type_id = db.Column(
         db.String(64), db.ForeignKey(SecurityRiskType.id), nullable=False
@@ -92,6 +94,8 @@ class SecurityRisk(db.Model):
         self.id = uuidutils.generate_uuid()
         self.status = self.NEW
         self.time = time
+        self.first_seen = time
+        self.last_seen = time
         sr_type = db.session.query(SecurityRiskType).get(type_id)
         if not sr_type:
             raise exceptions.SecurityRiskTypeDoesNotExist()

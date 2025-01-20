@@ -38,6 +38,8 @@ class SecurityRiskCreateSchema(ma.SQLAlchemyAutoSchema):
             'project_id',
             'resource_id',
             'resource_type',
+            'first_seen',
+            'last_seen',
         )
 
 
