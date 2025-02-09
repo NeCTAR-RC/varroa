@@ -7,15 +7,22 @@ It has several functions:
  * Track IP ownership over time in openstack
  * Store and manage discovered security risks from openstack resources.
 
-It's main/initial purpose is to ingest security scan data, link these IP addresses to
-openstack resources and provide the ability for the owners of those resources to see
-these security risks.
+It's purpose is to provide actionable information to users relating to security vulnerabilities and exposure. The varroa client is designed to provide an automated solution to display and manage this information
+
+## Workflow
+
+1. User ingests security scan data which contains IP addresses and security risks associated with them.
+2. Varroa then links these IP addresses to openstack resources,
+3. Varroa can create a security risk based on the security risk type and provide the ability for the owners of those resources to see these security risks and remediate any exposures they may have.
+
 
 ## Client
+
 To install the client:
  pip install varroaclient
 
 Source: https://github.com/NeCTAR-RC/python-varroaclient
+
 
 ## Concepts
 
