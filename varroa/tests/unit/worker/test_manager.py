@@ -112,6 +112,27 @@ class TestManager(base.TestCase):
         self.assertIsNone(models.SecurityRisk.query.get(security_risk.id))
 
     @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_negative_process_security_risk_dupe_risk_null_project(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # Create a security risk and an existing IP usage
+        manager = worker_manager.Manager()
+        security_risk = self.create_security_risk()
+        # ip_usage = self.create_ip_usage()
+
+        # Create an existing risk with same resource and type
+        esr = self.create_security_risk()
+        esr.status = models.SecurityRisk.PROCESSED
+        esr.type = security_risk.type
+        db.session.add(esr)
+        db.session.commit()
+
+        manager.process_security_risk(security_risk.id)
+
+        # Check that the security risk wasn't deleted
+        self.assertIsNotNone(models.SecurityRisk.query.get(security_risk.id))
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
     def test_find_and_create_ip_usage_success(
         self, mock_get_openstack, mock_create_app
     ):

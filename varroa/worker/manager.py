@@ -97,11 +97,15 @@ class Manager:
             .filter_by(resource_id=security_risk.resource_id)
             .filter_by(type_id=security_risk.type_id)
             .filter(models.SecurityRisk.id != security_risk.id)
+            .filter(models.SecurityRisk.project_id.isnot(None))
             .filter_by(status=models.SecurityRisk.PROCESSED)
             .first()
         )
         if dupe_security_risk:
-            LOG.info("Found duplicate security risk, updating")
+            LOG.info(
+                "Found duplicate security risk, updating %s",
+                dupe_security_risk.id,
+            )
             dupe_security_risk.time = security_risk.time
             dupe_security_risk.last_seen = security_risk.time
             dupe_security_risk.expires = security_risk.expires
