@@ -261,3 +261,31 @@ class TestManager(base.TestCase):
         self.assertIsNotNone(
             models.SecurityRisk.query.get(non_expired_risk.id)
         )
+
+        @mock.patch('varroa.worker.manager.clients.get_openstack')
+        def test_find_and_create_ip_usage_non_router_external(
+            self, mock_get_openstack, mock_create_app
+        ):
+            manager = worker_manager.Manager()
+            security_risk = self.create_security_risk()
+
+            mock_port = mock.Mock(
+                id='non-router-external-port-id',
+                project_id='fake-project-id',
+                device_id='fake-device-id',
+                device_owner='compute:nova',
+                created_at='2020-01-01T00:00:00Z',
+                network_id='non-router-external-network-id',
+            )
+            mock_get_openstack.return_value.list_ports.return_value = [
+                mock_port
+            ]
+
+            # Simulate the network not being router_external
+            mock_get_openstack.return_value.get_network.return_value = (
+                mock.Mock(is_router_external=False)
+            )
+
+            result = manager._find_and_create_ip_usage(security_risk)
+
+            self.assertIsNone(result)

@@ -136,6 +136,16 @@ class Manager:
         else:
             port = ports[0]
 
+        try:
+            network = openstack.get_network(port.network_id)
+        except Exception:
+            LOG.error("Couldn't find ports network %s", port.network_id)
+            return None
+
+        if not network.is_router_external:
+            LOG.debug("Ignoring port %s on internal network", port.id)
+            return None
+
         port_created = datetime.datetime.strptime(
             port.created_at, '%Y-%m-%dT%H:%M:%SZ'
         )
