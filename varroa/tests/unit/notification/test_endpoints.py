@@ -86,6 +86,44 @@ class TestEndpoints(base.TestCase):
         self.assertIsNone(ip_usage.end)
 
     @mock.patch("varroa.notification.endpoints.clients")
+    def test_port_create_duplicate_active_ip(self, mock_clients, mock_app):
+        ip_usage_no_end = self.create_ip_usage()
+        self.assertIsNone(ip_usage_no_end.end)
+        port_id = uuidutils.generate_uuid()
+        client = mock_clients.get_openstack.return_value
+        port = mock.Mock(
+            device_owner="compute:cc1",
+            fixed_ips=[{"ip_address": "203.0.113.1"}],
+            created_at="2024-2-1T12:12:12Z",
+            id=port_id,
+            project_id=base.PROJECT_ID,
+            device_id=base.RESOURCE_ID,
+        )
+        client.get_port_by_id.return_value = port
+        ep = endpoints.NotificationEndpoints()
+        payload = self._get_payload("port.create.end", port_id)
+        ep.sample(self.context, "pub-id", "event", payload, {})
+
+        mock_clients.get_openstack.assert_called_once()
+        client.get_port_by_id.assert_called_once_with(port_id)
+        ip_usages = db.session.query(models.IPUsage).filter(
+            models.IPUsage.end.is_(None)
+        )
+        self.assertEqual(1, ip_usages.count())
+        ip_usage = ip_usages.one()
+        self.assertEqual(base.RESOURCE_ID, ip_usage.resource_id)
+        self.assertEqual(base.PROJECT_ID, ip_usage.project_id)
+        self.assertEqual("instance", ip_usage.resource_type)
+        self.assertEqual(datetime(2024, 2, 1, 12, 12, 12), ip_usage.start)
+        self.assertEqual(port_id, ip_usage.port_id)
+        self.assertIsNone(ip_usage.end)
+
+        ip_usage_no_end = db.session.query(models.IPUsage).get(
+            ip_usage_no_end.id
+        )
+        self.assertEqual(datetime(2024, 2, 1, 12, 12, 11), ip_usage_no_end.end)
+
+    @mock.patch("varroa.notification.endpoints.clients")
     def test_port_create_unsupported_device_id(self, mock_clients, mock_app):
         client = mock_clients.get_openstack.return_value
         port = mock.Mock(device_owner="floatingip:")

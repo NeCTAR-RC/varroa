@@ -114,15 +114,35 @@ class NotificationEndpoints:
             LOG.debug("Skipping private IP %s", ipaddress)
             return
 
+        port_created = datetime.datetime.strptime(
+            port.created_at, "%Y-%m-%dT%H:%M:%SZ"
+        )
+
+        # Look for any existing ip_usage records with same IP that haven't ended
+        # This would indicate a missed end notification so we should end that one now
+        ip_usage_dupes = (
+            db.session.query(models.IPUsage)
+            .filter_by(ip=ipaddress)
+            .filter(models.IPUsage.end.is_(None))
+            .filter(models.IPUsage.port_id != port_id)
+            .all()
+        )
+
+        for iu in ip_usage_dupes:
+            LOG.error(
+                "Found IP Usage with same IP (%s) and not ended, setting end",
+                ipaddress,
+            )
+            iu.end = port_created - datetime.timedelta(seconds=1)
+            db.session.add(iu)
+            db.session.commit()
+
         ip_usage = (
             db.session.query(models.IPUsage)
             .filter_by(port_id=port_id)
             .one_or_none()
         )
         if ip_usage is None:
-            port_created = datetime.datetime.strptime(
-                port.created_at, "%Y-%m-%dT%H:%M:%SZ"
-            )
             ip_usage = models.IPUsage(
                 ip=ipaddress,
                 project_id=port.project_id,
