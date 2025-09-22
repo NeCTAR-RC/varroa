@@ -27,7 +27,9 @@ class VarroaCollector(registry.Collector):
 
     def collect(self):
         with self.app.app_context():
-            sr_query = db.session.query(models.SecurityRisk)
+            sr_query = db.session.query(models.SecurityRisk).filter(
+                models.SecurityRisk.project_id.isnot(None)
+            )
             unique_projects = sr_query.with_entities(
                 func.count(func.distinct(models.SecurityRisk.project_id))
             ).scalar()
