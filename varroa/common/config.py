@@ -41,6 +41,7 @@ flask_opts = [
     cfg.StrOpt("secret_key", secret=True),
     cfg.StrOpt("host", default="0.0.0.0"),
     cfg.IntOpt("port", default=5000),
+    cfg.IntOpt("metric_port", default=9001),
 ]
 
 database_opts = [
