@@ -45,7 +45,20 @@ class Manager:
 
     @app_context
     def process_security_risk(self, security_risk_id):
-        LOG.info("Process_SecurityRisking %s", security_risk_id)
+        try:
+            self._process_security_risk(security_risk_id)
+        except Exception:
+            # Roll back so the session is clean for the next message and the
+            # risk stays NEW rather than being wrongly recorded as processed.
+            # reprocess_new_risks retries it.
+            LOG.exception(
+                "Failed to process security risk %s, will retry",
+                security_risk_id,
+            )
+            db.session.rollback()
+
+    def _process_security_risk(self, security_risk_id):
+        LOG.info("Processing security risk %s", security_risk_id)
         security_risk = (
             db.session.query(models.SecurityRisk)
             .filter_by(id=security_risk_id)
@@ -148,10 +161,17 @@ class Manager:
         else:
             port = ports[0]
 
-        try:
-            network = openstack.get_network(port.network_id)
-        except Exception:
-            LOG.error("Couldn't find ports network %s", port.network_id)
+        # get_network returns None when the network is missing. A transient
+        # error (neutron/keystone) is deliberately NOT caught here so it
+        # propagates and the risk is retried rather than being marked
+        # processed with no resource attributed.
+        network = openstack.get_network(port.network_id)
+        if network is None:
+            LOG.error(
+                "Couldn't find network %s for port %s",
+                port.network_id,
+                port.id,
+            )
             return None
 
         if not network.is_router_external:

@@ -134,6 +134,34 @@ class TestManager(base.TestCase):
         self.assertIsNotNone(models.SecurityRisk.query.get(security_risk.id))
 
     @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_transient_error_leaves_new(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # A transient neutron failure while resolving the port/network must
+        # not mark the risk PROCESSED; it is rolled back and left NEW so the
+        # reconciliation task retries it.
+        manager = worker_manager.Manager()
+        security_risk = self.create_security_risk()
+        mock_port = mock.Mock(
+            id='fake-port-id',
+            project_id='fake-project-id',
+            device_id='fake-device-id',
+            device_owner='compute:nova',
+            created_at='2020-01-01T00:00:00Z',
+            network_id='fake-network-id',
+        )
+        conn = mock_get_openstack.return_value
+        conn.list_ports.return_value = [mock_port]
+        conn.get_network.side_effect = Exception("neutron unavailable")
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(models.SecurityRisk.NEW, updated_sr.status)
+        self.assertIsNone(updated_sr.project_id)
+        self.assertEqual(0, models.IPUsage.query.count())
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
     def test_process_security_risk_missing(
         self, mock_get_openstack, mock_create_app
     ):
