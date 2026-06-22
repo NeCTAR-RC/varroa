@@ -204,6 +204,53 @@ class TestEndpoints(base.TestCase):
         self.assertEqual(port_id, ip_usage.port_id)
 
     @mock.patch("varroa.notification.endpoints.clients")
+    def test_port_create_internal_network(self, mock_clients, mock_app):
+        # A public IP on a non-external network must not be tracked, matching
+        # the worker's is_router_external gate.
+        port_id = uuidutils.generate_uuid()
+        client = mock_clients.get_openstack.return_value
+        port = mock.Mock(
+            device_owner="compute:cc1",
+            fixed_ips=[{"ip_address": "203.0.113.2"}],
+            created_at="2024-2-1T12:12:12Z",
+            id=port_id,
+            project_id=base.PROJECT_ID,
+            device_id=base.RESOURCE_ID,
+            network_id="internal-net",
+        )
+        client.get_port_by_id.return_value = port
+        client.get_network.return_value = mock.Mock(is_router_external=False)
+        ep = endpoints.NotificationEndpoints()
+        payload = self._get_payload("port.create.end", port_id)
+        ep.sample(self.context, "pub-id", "event", payload, {})
+
+        client.get_network.assert_called_once_with("internal-net")
+        self.assertEqual(0, db.session.query(models.IPUsage).count())
+
+    @mock.patch("varroa.notification.endpoints.clients")
+    def test_port_create_missing_network(self, mock_clients, mock_app):
+        # get_network returns None when the network is gone; the port is
+        # skipped rather than crashing on a None network.
+        port_id = uuidutils.generate_uuid()
+        client = mock_clients.get_openstack.return_value
+        port = mock.Mock(
+            device_owner="compute:cc1",
+            fixed_ips=[{"ip_address": "203.0.113.2"}],
+            created_at="2024-2-1T12:12:12Z",
+            id=port_id,
+            project_id=base.PROJECT_ID,
+            device_id=base.RESOURCE_ID,
+            network_id="gone-net",
+        )
+        client.get_port_by_id.return_value = port
+        client.get_network.return_value = None
+        ep = endpoints.NotificationEndpoints()
+        payload = self._get_payload("port.create.end", port_id)
+        ep.sample(self.context, "pub-id", "event", payload, {})
+
+        self.assertEqual(0, db.session.query(models.IPUsage).count())
+
+    @mock.patch("varroa.notification.endpoints.clients")
     def test_port_create_private_ip(self, mock_clients, mock_app):
         client = mock_clients.get_openstack.return_value
         port = mock.Mock(

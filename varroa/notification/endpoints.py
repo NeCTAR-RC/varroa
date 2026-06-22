@@ -141,6 +141,23 @@ class NotificationEndpoints:
             LOG.debug("Port %s has no public IP to track", port_id)
             return
 
+        # Only track ports on external networks, matching the worker's
+        # fallback path (_find_and_create_ip_usage). Without this the two
+        # paths disagree about which ports are tracked. get_network returns
+        # None when the network is missing; a transient lookup error
+        # propagates so the notification is requeued.
+        network = client.get_network(port.network_id)
+        if network is None:
+            LOG.error(
+                "Couldn't find network %s for port %s",
+                port.network_id,
+                port_id,
+            )
+            return
+        if not network.is_router_external:
+            LOG.debug("Ignoring port %s on internal network", port_id)
+            return
+
         port_created = datetime.datetime.strptime(
             port.created_at, "%Y-%m-%dT%H:%M:%SZ"
         )
