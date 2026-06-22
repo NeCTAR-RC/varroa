@@ -124,6 +124,46 @@ class TestEndpoints(base.TestCase):
         self.assertEqual(datetime(2024, 2, 1, 12, 12, 11), ip_usage_no_end.end)
 
     @mock.patch("varroa.notification.endpoints.clients")
+    def test_port_create_concurrent_insert(self, mock_clients, mock_app):
+        # Simulate the race where another worker inserts the IPUsage row
+        # for this port between our lookup and our commit. The unique
+        # constraint on port_id must be handled by updating the existing
+        # row rather than propagating an IntegrityError.
+        port_id = uuidutils.generate_uuid()
+        existing = self.create_ip_usage(
+            port_id=port_id,
+            ip="203.0.113.2",
+            resource_id=None,
+            resource_type=None,
+        )
+
+        client = mock_clients.get_openstack.return_value
+        port = mock.Mock(
+            device_owner="compute:cc1",
+            fixed_ips=[{"ip_address": "203.0.113.2"}],
+            created_at="2024-2-1T12:12:12Z",
+            id=port_id,
+            project_id=base.PROJECT_ID,
+            device_id=base.RESOURCE_ID,
+        )
+        client.get_port_by_id.return_value = port
+
+        ep = endpoints.NotificationEndpoints()
+        payload = self._get_payload("port.create.end", port_id)
+
+        # Force the initial lookup to miss so the handler takes the insert
+        # path and collides with the pre-existing row on commit.
+        with mock.patch("sqlalchemy.orm.Query.one_or_none", return_value=None):
+            ep.sample(self.context, "pub-id", "event", payload, {})
+
+        # No duplicate row was created and the existing row was updated.
+        self.assertEqual(1, db.session.query(models.IPUsage).count())
+        ip_usage = db.session.query(models.IPUsage).get(existing.id)
+        self.assertEqual(base.RESOURCE_ID, ip_usage.resource_id)
+        self.assertEqual("instance", ip_usage.resource_type)
+        self.assertEqual(port_id, ip_usage.port_id)
+
+    @mock.patch("varroa.notification.endpoints.clients")
     def test_port_create_unsupported_device_id(self, mock_clients, mock_app):
         client = mock_clients.get_openstack.return_value
         port = mock.Mock(device_owner="floatingip:")

@@ -18,6 +18,7 @@ import openstack
 from oslo_config import cfg
 from oslo_log import log as logging
 import oslo_messaging as messaging
+from sqlalchemy import exc as sa_exc
 
 from varroa import app
 from varroa.common import clients
@@ -151,9 +152,26 @@ class NotificationEndpoints:
                 resource_type=resource_type,
                 start=port_created,
             )
+            db.session.add(ip_usage)
+            try:
+                db.session.commit()
+                return
+            except sa_exc.IntegrityError:
+                # A concurrent notification for the same port inserted
+                # the record between our lookup and commit. Roll back and
+                # fall through to update the existing row instead.
+                db.session.rollback()
+                LOG.info(
+                    "IP usage for port %s created concurrently, updating",
+                    port_id,
+                )
+                ip_usage = (
+                    db.session.query(models.IPUsage)
+                    .filter_by(port_id=port_id)
+                    .one()
+                )
 
-        else:
-            ip_usage.resource_id = port.device_id
-            ip_usage.resource_type = resource_type
+        ip_usage.resource_id = port.device_id
+        ip_usage.resource_type = resource_type
         db.session.add(ip_usage)
         db.session.commit()
