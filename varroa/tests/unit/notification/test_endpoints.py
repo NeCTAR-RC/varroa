@@ -218,6 +218,36 @@ class TestEndpoints(base.TestCase):
         self.assertEqual(base.PORT_ID, ip_usage.port_id)
         self.assertIsNone(ip_usage.end)
 
+    @mock.patch("varroa.notification.endpoints.clients")
+    def test_port_update_ip_changed(self, mock_clients, mock_app):
+        # The port keeps its id but its fixed IP changes, and the row also
+        # carries a stale end from a prior delete. The usage row must be moved
+        # to the new IP and the stale end cleared, so risk attribution tracks
+        # the current address instead of pointing at the old one.
+        ip_usage = self.create_ip_usage(
+            ip="203.0.113.1", end=datetime(2024, 1, 1)
+        )
+        client = mock_clients.get_openstack.return_value
+        port = mock.Mock(
+            device_owner="compute:cc1",
+            fixed_ips=[{"ip_address": "203.0.113.9"}],
+            created_at="2024-2-1T12:12:12Z",
+            id=base.PORT_ID,
+            project_id=base.PROJECT_ID,
+            device_id=base.RESOURCE_ID,
+        )
+        client.get_port_by_id.return_value = port
+        ep = endpoints.NotificationEndpoints()
+        payload = self._get_payload("port.update.end", base.PORT_ID)
+        ep.sample(self.context, "pub-id", "event", payload, {})
+
+        self.assertEqual(1, db.session.query(models.IPUsage).count())
+        ip_usage = db.session.query(models.IPUsage).get(ip_usage.id)
+        self.assertEqual("203.0.113.9", ip_usage.ip)
+        self.assertEqual(base.RESOURCE_ID, ip_usage.resource_id)
+        self.assertEqual(base.PROJECT_ID, ip_usage.project_id)
+        self.assertIsNone(ip_usage.end)
+
     def test_sample_malformed_payload_acked(self, mock_app):
         # A payload that is not shaped like a port event is acked, not
         # requeued, so it does not become a poison message.

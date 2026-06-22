@@ -193,7 +193,17 @@ class NotificationEndpoints:
                     .one()
                 )
 
+        # Refresh all mutable fields from the live port. A create/update event
+        # means the port is active, so clear any stale end (e.g. from a missed
+        # or spurious delete). If the port's fixed IP changed, update ip too so
+        # the ownership record tracks the current address; otherwise a risk
+        # against the old IP would be misattributed to this resource and a risk
+        # against the new IP would match no record at all.
+        # (start is the port's immutable creation time, so it is left as is.)
+        ip_usage.ip = ipaddress
+        ip_usage.project_id = port.project_id
         ip_usage.resource_id = port.device_id
         ip_usage.resource_type = resource_type
+        ip_usage.end = None
         db.session.add(ip_usage)
         db.session.commit()
