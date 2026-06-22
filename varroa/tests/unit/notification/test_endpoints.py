@@ -176,6 +176,34 @@ class TestEndpoints(base.TestCase):
         self.assertEqual(0, db.session.query(models.IPUsage).count())
 
     @mock.patch("varroa.notification.endpoints.clients")
+    def test_port_create_multiple_fixed_ips(self, mock_clients, mock_app):
+        # The first fixed IP is private; the public one must still be tracked
+        # rather than the port being skipped on fixed_ips[0].
+        port_id = uuidutils.generate_uuid()
+        client = mock_clients.get_openstack.return_value
+        port = mock.Mock(
+            device_owner="compute:cc1",
+            fixed_ips=[
+                {"ip_address": "192.168.0.5"},
+                {"ip_address": "203.0.113.7"},
+            ],
+            created_at="2024-2-1T12:12:12Z",
+            id=port_id,
+            project_id=base.PROJECT_ID,
+            device_id=base.RESOURCE_ID,
+        )
+        client.get_port_by_id.return_value = port
+        ep = endpoints.NotificationEndpoints()
+        payload = self._get_payload("port.create.end", port_id)
+        ep.sample(self.context, "pub-id", "event", payload, {})
+
+        self.assertEqual(1, db.session.query(models.IPUsage).count())
+        ip_usage = (
+            db.session.query(models.IPUsage).filter_by(ip="203.0.113.7").one()
+        )
+        self.assertEqual(port_id, ip_usage.port_id)
+
+    @mock.patch("varroa.notification.endpoints.clients")
     def test_port_create_private_ip(self, mock_clients, mock_app):
         client = mock_clients.get_openstack.return_value
         port = mock.Mock(

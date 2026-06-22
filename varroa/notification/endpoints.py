@@ -127,14 +127,18 @@ class NotificationEndpoints:
             )
             return
 
-        try:
-            ipaddress = port.fixed_ips[0].get("ip_address")
-        except Exception:
-            LOG.error("Port %s has no ipaddress", port.id)
-            return
-
-        if utils.is_private_ip(ipaddress):
-            LOG.debug("Skipping private IP %s", ipaddress)
+        # A port can have several fixed IPs (e.g. dual-stack v4/v6). Track the
+        # first public one rather than blindly taking fixed_ips[0], which would
+        # skip the whole port when a public IP sits behind a private one. The
+        # port_id is unique, so only one IP per port can be recorded.
+        ipaddress = None
+        for fixed_ip in port.fixed_ips or []:
+            candidate = fixed_ip.get("ip_address")
+            if candidate and not utils.is_private_ip(candidate):
+                ipaddress = candidate
+                break
+        if ipaddress is None:
+            LOG.debug("Port %s has no public IP to track", port_id)
             return
 
         port_created = datetime.datetime.strptime(
