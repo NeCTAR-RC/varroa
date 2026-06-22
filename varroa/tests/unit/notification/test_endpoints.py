@@ -14,6 +14,7 @@
 from datetime import datetime
 from unittest import mock
 
+import oslo_messaging as messaging
 from oslo_utils import uuidutils
 
 from varroa.extensions import db
@@ -215,4 +216,36 @@ class TestEndpoints(base.TestCase):
         self.assertEqual("instance", ip_usage.resource_type)
         self.assertEqual(base.START, ip_usage.start)
         self.assertEqual(base.PORT_ID, ip_usage.port_id)
+        self.assertIsNone(ip_usage.end)
+
+    def test_sample_malformed_payload_acked(self, mock_app):
+        # A payload that is not shaped like a port event is acked, not
+        # requeued, so it does not become a poison message.
+        ep = endpoints.NotificationEndpoints()
+        result = ep.sample(self.context, "pub-id", "event", [{}], {})
+        self.assertEqual(messaging.NotificationResult.HANDLED, result)
+
+    def test_sample_handler_error_requeued(self, mock_app):
+        # A transient handler failure is requeued so the event is redelivered
+        # rather than silently lost.
+        ep = endpoints.NotificationEndpoints()
+        port_id = uuidutils.generate_uuid()
+        payload = self._get_payload("port.create.end", port_id)
+        with mock.patch.object(
+            ep, "handle_create_update", side_effect=Exception("boom")
+        ):
+            result = ep.sample(self.context, "pub-id", "event", payload, {})
+        self.assertEqual(messaging.NotificationResult.REQUEUE, result)
+
+    def test_handle_end_unparsable_timestamp_acked(self, mock_app):
+        # A malformed 'generated' timestamp is dropped (acked), leaving the
+        # existing IP usage untouched, instead of crashing into a requeue loop.
+        ip_usage = self.create_ip_usage()
+        self.assertIsNone(ip_usage.end)
+        ep = endpoints.NotificationEndpoints()
+        payload = self._get_payload("port.delete.end", base.PORT_ID)
+        payload[0]["generated"] = "not-a-timestamp"
+        result = ep.sample(self.context, "pub-id", "event", payload, {})
+        self.assertEqual(messaging.NotificationResult.HANDLED, result)
+        ip_usage = db.session.query(models.IPUsage).get(ip_usage.id)
         self.assertIsNone(ip_usage.end)

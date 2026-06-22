@@ -48,13 +48,20 @@ class NotificationEndpoints:
         self.notifier = rpc.get_notifier()
 
     def sample(self, ctxt, publisher_id, event_type, payload, metadata):
+        LOG.debug("Processing notification for payload %s", payload)
         try:
-            LOG.debug("Processing notification for payload %s", payload)
             traits = {d[0]: d[2] for d in payload[0]["traits"]}
             event_type = payload[0].get("event_type")
             generated = payload[0].get("generated")
             port_id = traits.get("resource_id")
+        except (IndexError, KeyError, TypeError) as e:
+            # The payload is not shaped like a port event we understand.
+            # Redelivery cannot fix it, so ack it rather than poison the queue.
+            LOG.error("Discarding malformed notification: %s", payload)
+            LOG.exception(e)
+            return messaging.NotificationResult.HANDLED
 
+        try:
             if event_type == "port.delete.end":
                 self.handle_end(port_id, generated)
             elif event_type == "port.create.end":
@@ -63,16 +70,31 @@ class NotificationEndpoints:
                 self.handle_create_update(port_id)
             else:
                 LOG.debug("Received unhandled event %s", event_type)
-                return
         except Exception as e:
-            LOG.error("Unable to handle notification: %s", payload)
+            # A handler failure is most likely transient (database, keystone
+            # or neutron). Requeue so the event is redelivered rather than
+            # silently dropped, which would corrupt the IP-ownership history
+            # that security risk attribution depends on.
+            LOG.error("Failed to handle notification, requeuing: %s", payload)
             LOG.exception(e)
+            return messaging.NotificationResult.REQUEUE
+
         return messaging.NotificationResult.HANDLED
 
     @app_context
     def handle_end(self, port_id, generated):
         LOG.debug("Handle end for %s", port_id)
-        end = datetime.datetime.strptime(generated, "%Y-%m-%dT%H:%M:%S.%f")
+        try:
+            end = datetime.datetime.strptime(generated, "%Y-%m-%dT%H:%M:%S.%f")
+        except (ValueError, TypeError):
+            # A malformed timestamp will never parse on redelivery, so log and
+            # drop it instead of letting sample() requeue a poison message.
+            LOG.error(
+                "Discarding port.delete.end for %s: unparsable timestamp %s",
+                port_id,
+                generated,
+            )
+            return
 
         ip_usage = (
             db.session.query(models.IPUsage)
