@@ -11,9 +11,29 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import marshmallow
+from oslo_utils import timeutils
+
 from varroa.api.v1.schemas import security_risk_type
 from varroa.extensions import ma
 from varroa import models
+
+
+class UTCDateTime(marshmallow.fields.DateTime):
+    """DateTime field that stores incoming values as naive UTC.
+
+    The model's DateTime columns are timezone-naive UTC, and the worker and
+    periodic tasks compare against naive UTC. Normalising on load means a
+    client supplying any offset (for example +10:00) is converted to UTC
+    before storage rather than having its offset silently dropped, which would
+    skew IP-ownership matching and expiry.
+    """
+
+    def _deserialize(self, value, attr, data, **kwargs):
+        dt = super()._deserialize(value, attr, data, **kwargs)
+        if dt is not None and dt.tzinfo is not None:
+            dt = timeutils.normalize_time(dt)
+        return dt
 
 
 class SecurityRiskSchema(ma.SQLAlchemyAutoSchema):
@@ -27,6 +47,9 @@ class SecurityRiskSchema(ma.SQLAlchemyAutoSchema):
 
 
 class SecurityRiskCreateSchema(ma.SQLAlchemyAutoSchema):
+    time = UTCDateTime(format='%Y-%m-%dT%H:%M:%S%z', required=True)
+    expires = UTCDateTime(format='%Y-%m-%dT%H:%M:%S%z', required=True)
+
     class Meta:
         model = models.SecurityRisk
         load_instance = True

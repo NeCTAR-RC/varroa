@@ -109,6 +109,25 @@ class TestAdminSecurityRisksAPI(base.ApiTestCase):
         self.assertEqual(data['expires'], created_risk['expires'])
         self.assertEqual(models.SecurityRisk.NEW, created_risk['status'])
 
+    def test_security_risk_create_normalises_timezone(self):
+        sr_type = self.create_security_risk_type()
+        data = {
+            "ipaddress": "203.0.113.4",
+            "time": "2024-02-29T12:00:00+10:00",
+            "type_id": sr_type.id,
+            'expires': '2024-03-01T12:00:00+10:00',
+        }
+        response = self.client.post("/v1/security-risks/", json=data)
+
+        self.assertStatus(response, 201)
+        created_risk = response.get_json()
+        # A +10:00 offset is converted to UTC before storage.
+        self.assertEqual("2024-02-29T02:00:00+00:00", created_risk['time'])
+        self.assertEqual("2024-03-01T02:00:00+00:00", created_risk['expires'])
+        stored = models.SecurityRisk.query.get(created_risk['id'])
+        self.assertIsNone(stored.time.tzinfo)
+        self.assertEqual(2, stored.time.hour)
+
     def test_security_risk_create_with_unknown_type(self):
         unknown_type_id = '999'  # Assuming this ID doesn't exist
         data = {
