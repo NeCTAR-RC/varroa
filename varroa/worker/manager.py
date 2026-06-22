@@ -194,9 +194,45 @@ class Manager:
         risks = (
             db.session.query(models.SecurityRisk)
             .filter(models.SecurityRisk.expires < now)
+            # Never delete a risk that has not been processed yet. It may be
+            # stranded behind a dropped RPC cast; reprocess_new_risks drives
+            # those to PROCESSED/ERROR first so a real exposure is not
+            # silently discarded before it is ever attributed to a tenant.
+            .filter(models.SecurityRisk.status != models.SecurityRisk.NEW)
             .all()
         )
         for risk in risks:
             LOG.info(f"Deleting expired risk {risk}")
             db.session.delete(risk)
         db.session.commit()
+
+    def reprocess_new_risks(self):
+        """Re-drive security risks that were never processed.
+
+        The API casts process_security_risk fire-and-forget, so a worker
+        outage or a dropped message can leave a risk stranded in NEW forever
+        (and clean_expired_risks no longer removes NEW risks). Periodically
+        pick up NEW risks that are old enough not to still be in flight and
+        reprocess them. process_security_risk is idempotent: it always moves
+        the risk to PROCESSED or ERROR.
+        """
+        LOG.info("Reprocessing stranded new security risks")
+        for risk_id in self._stranded_new_risk_ids():
+            LOG.info("Reprocessing stranded security risk %s", risk_id)
+            self.process_security_risk(risk_id)
+
+    @app_context
+    def _stranded_new_risk_ids(self):
+        # Leave recently created risks alone; they may still be in flight in
+        # the RPC handler. Only reclaim NEW risks older than one processing
+        # interval.
+        cutoff = timeutils.utcnow() - datetime.timedelta(
+            seconds=CONF.worker.periodic_task_interval
+        )
+        risks = (
+            db.session.query(models.SecurityRisk)
+            .filter(models.SecurityRisk.status == models.SecurityRisk.NEW)
+            .filter(models.SecurityRisk.first_seen < cutoff)
+            .all()
+        )
+        return [risk.id for risk in risks]

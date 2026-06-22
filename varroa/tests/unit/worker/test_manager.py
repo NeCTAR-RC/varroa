@@ -15,6 +15,7 @@ import datetime
 from unittest import mock
 
 from freezegun import freeze_time
+from oslo_utils import timeutils
 
 from varroa.extensions import db
 from varroa import models
@@ -271,6 +272,11 @@ class TestManager(base.TestCase):
         non_expired_risk = self.create_security_risk(
             expires=datetime.datetime(2025, 1, 1)
         )
+        # Only processed risks are eligible for cleanup.
+        expired_risk.status = models.SecurityRisk.PROCESSED
+        non_expired_risk.status = models.SecurityRisk.PROCESSED
+        db.session.add_all([expired_risk, non_expired_risk])
+        db.session.commit()
 
         manager = worker_manager.Manager()
         manager.clean_expired_risks()
@@ -279,6 +285,56 @@ class TestManager(base.TestCase):
         self.assertIsNotNone(
             models.SecurityRisk.query.get(non_expired_risk.id)
         )
+
+    @freeze_time("2024-01-01")
+    def test_clean_expired_risks_keeps_unprocessed(self, mock_create_app):
+        # A NEW risk that has expired must not be deleted; it has never been
+        # attributed to a tenant and should be reprocessed instead.
+        expired_new_risk = self.create_security_risk(
+            expires=datetime.datetime(2020, 1, 1)
+        )
+        self.assertEqual(expired_new_risk.status, models.SecurityRisk.NEW)
+
+        manager = worker_manager.Manager()
+        manager.clean_expired_risks()
+
+        self.assertIsNotNone(
+            models.SecurityRisk.query.get(expired_new_risk.id)
+        )
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_reprocess_new_risks(self, mock_get_openstack, mock_create_app):
+        # A risk left in NEW (e.g. the worker was down when the API cast the
+        # RPC) is picked up and matched against IP usage on reprocessing.
+        manager = worker_manager.Manager()
+        security_risk = self.create_security_risk()
+        ip_usage = self.create_ip_usage()
+        self.assertEqual(security_risk.status, models.SecurityRisk.NEW)
+
+        manager.reprocess_new_risks()
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.status, models.SecurityRisk.PROCESSED)
+        self.assertEqual(updated_sr.project_id, ip_usage.project_id)
+        self.assertEqual(updated_sr.resource_id, ip_usage.resource_id)
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_reprocess_new_risks_skips_recent(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # A freshly created NEW risk may still be in flight in the RPC
+        # handler, so it is left alone by the reconciliation task.
+        manager = worker_manager.Manager()
+        now = timeutils.utcnow()
+        recent_risk = self.create_security_risk(
+            time=now, expires=now + datetime.timedelta(days=1)
+        )
+        self.create_ip_usage()
+
+        manager.reprocess_new_risks()
+
+        updated_sr = models.SecurityRisk.query.get(recent_risk.id)
+        self.assertEqual(updated_sr.status, models.SecurityRisk.NEW)
 
     @mock.patch('varroa.worker.manager.clients.get_openstack')
     def test_find_and_create_ip_usage_non_router_external(

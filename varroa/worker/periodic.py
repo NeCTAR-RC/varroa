@@ -38,11 +38,17 @@ class PeriodicTaskService(cotyledon.Service):
         LOG.info("Running periodic task clean_expired_risks")
         self.manager.clean_expired_risks()
 
+    @periodics.periodic(CONF.worker.periodic_task_interval)
+    def reprocess_new_risks(self):
+        LOG.info("Running periodic task reprocess_new_risks")
+        self.manager.reprocess_new_risks()
+
     def run(self):
         LOG.info("Starting periodic task thread...")
 
         callables = [
             (self.clean_expired_risks, (), {}),
+            (self.reprocess_new_risks, (), {}),
         ]
         self.worker = periodics.PeriodicWorker(callables)
         self.t = threading.Thread(target=self.worker.start, daemon=True)
