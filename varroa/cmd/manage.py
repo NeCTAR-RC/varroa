@@ -58,14 +58,31 @@ def backfill_ports():
                 )
                 continue
 
-            try:
-                ipaddress = port.fixed_ips[0].get("ip_address")
-            except Exception:
-                LOG.error("Port %s has no ipaddress", port.id)
+            # Track the first public fixed IP rather than blindly
+            # fixed_ips[0], matching the notification path.
+            ipaddress = None
+            for fixed_ip in port.fixed_ips or []:
+                candidate = fixed_ip.get("ip_address")
+                if candidate and not utils.is_private_ip(candidate):
+                    ipaddress = candidate
+                    break
+            if ipaddress is None:
+                LOG.debug("Port %s has no public IP to track", port.id)
                 continue
 
-            if utils.is_private_ip(ipaddress):
-                LOG.debug("Skipping private IP %s", ipaddress)
+            # Only track ports on external networks, matching the
+            # notification and worker paths. get_network returns None when
+            # the network is missing.
+            network = openstack.get_network(port.network_id)
+            if network is None:
+                LOG.error(
+                    "Couldn't find network %s for port %s",
+                    port.network_id,
+                    port.id,
+                )
+                continue
+            if not network.is_router_external:
+                LOG.debug("Ignoring port %s on internal network", port.id)
                 continue
 
             try:
