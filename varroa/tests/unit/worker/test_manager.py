@@ -134,6 +134,15 @@ class TestManager(base.TestCase):
         self.assertIsNotNone(models.SecurityRisk.query.get(security_risk.id))
 
     @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_missing(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # The risk was deleted before the worker got to it; must not crash.
+        manager = worker_manager.Manager()
+        manager.process_security_risk('does-not-exist')
+        mock_get_openstack.assert_not_called()
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
     def test_process_security_risk_multiple_ip_usage(
         self, mock_get_openstack, mock_create_app
     ):

@@ -49,8 +49,19 @@ class Manager:
         security_risk = (
             db.session.query(models.SecurityRisk)
             .filter_by(id=security_risk_id)
+            # Lock the row so a concurrent reprocess (e.g. the reconciliation
+            # task racing the original RPC cast) cannot process the same risk
+            # twice. with_for_update is a no-op on the SQLite used in tests.
+            .with_for_update()
             .first()
         )
+        if security_risk is None:
+            # The risk was deleted between the cast and now; nothing to do.
+            LOG.warning(
+                "Security risk %s no longer exists, skipping",
+                security_risk_id,
+            )
+            return
         security_risk.status = models.SecurityRisk.PROCESSED
 
         try:
