@@ -24,6 +24,11 @@ LOG = log.getLogger(__name__)
 
 
 class IPUsage(db.Model):
+    # The security-risk matching query filters on ip together with the
+    # start/end window for every risk, so index (ip, end) to avoid a table
+    # scan on what is the hot path of the service.
+    __table_args__ = (db.Index("ix_ip_usage_ip_end", "ip", "end"),)
+
     id = db.Column(db.Integer, primary_key=True, autoincrement=True)
     ip = db.Column(db.String(64), nullable=False)
     project_id = db.Column(db.String(64), nullable=False)
