@@ -24,6 +24,15 @@ class TestUtils(base.TestCase):
             '10.255.255.255',
             '172.31.255.255',
             '192.168.255.255',
+            # IPv4 loopback, link-local and carrier-grade NAT.
+            '127.0.0.1',
+            '169.254.1.1',
+            '100.64.0.1',
+            # IPv6 loopback, link-local and unique-local.
+            '::1',
+            'fe80::1',
+            'fc00::1',
+            'fd12:3456:789a::1',
         ]
         public_ips = [
             '8.8.8.8',
@@ -31,6 +40,9 @@ class TestUtils(base.TestCase):
             '172.32.0.1',
             '192.169.0.1',
             '11.0.0.1',
+            # IPv6 global unicast and documentation range.
+            '2001:4860:4860::8888',
+            '2001:db8::1',
         ]
 
         for ip in private_ips:
@@ -38,3 +50,9 @@ class TestUtils(base.TestCase):
 
         for ip in public_ips:
             self.assertFalse(utils.is_private_ip(ip), f"{ip} should be public")
+
+    def test_is_private_ip_invalid(self):
+        # Unparsable input is treated as non-private (validation is the
+        # caller's responsibility) and must not raise.
+        self.assertFalse(utils.is_private_ip('not-an-ip'))
+        self.assertFalse(utils.is_private_ip(None))
