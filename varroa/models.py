@@ -73,6 +73,7 @@ class SecurityRiskType(db.Model):
 class SecurityRisk(db.Model):
     NEW = 'NEW'
     PROCESSED = 'PROCESSED'
+    ERROR = 'ERROR'
 
     id = db.Column(db.String(64), primary_key=True)
     status = db.Column(db.String(16), nullable=False)
