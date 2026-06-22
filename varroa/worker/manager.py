@@ -16,6 +16,7 @@ import functools
 
 from oslo_config import cfg
 from oslo_log import log as logging
+from oslo_utils import timeutils
 from sqlalchemy.orm import exc as sa_exc
 
 from varroa import app
@@ -186,7 +187,10 @@ class Manager:
     @app_context
     def clean_expired_risks(self):
         LOG.info("Cleaning expired risks")
-        now = datetime.datetime.now()
+        # All datetimes in the system are stored as naive UTC (the API parses
+        # expires as UTC and neutron created_at is UTC), so compare against
+        # UTC now rather than the worker host's local wall-clock time.
+        now = timeutils.utcnow()
         risks = (
             db.session.query(models.SecurityRisk)
             .filter(models.SecurityRisk.expires < now)
