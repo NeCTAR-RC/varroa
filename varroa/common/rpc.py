@@ -79,7 +79,9 @@ def get_server(
 def get_notifier(service=None, host=None, publisher_id=None):
     assert NOTIFIER is not None, "'NOTIFIER' must not be None"
 
-    return NOTIFIER.prepare()
+    if publisher_id is None:
+        publisher_id = f"{service}.{host or cfg.CONF.host}"
+    return NOTIFIER.prepare(publisher_id=publisher_id)
 
 
 def create_transport(url):

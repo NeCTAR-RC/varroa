@@ -45,7 +45,7 @@ def app_context(f):
 class NotificationEndpoints:
     def __init__(self):
         self.app = app.create_app(init_config=False)
-        self.notifier = rpc.get_notifier()
+        self.notifier = rpc.get_notifier(service="varroa-notification")
         self._openstack = None
 
     def _get_openstack(self):
