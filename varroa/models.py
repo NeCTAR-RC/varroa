@@ -59,7 +59,7 @@ class IPUsage(db.Model):
 
 class SecurityRiskType(db.Model):
     id = db.Column(db.String(64), primary_key=True)
-    name = db.Column(db.String(64), nullable=False)
+    name = db.Column(db.String(64), nullable=False, unique=True)
     display_name = db.Column(db.String(64))
     description = db.Column(db.Text())
     help_url = db.Column(db.String(255))

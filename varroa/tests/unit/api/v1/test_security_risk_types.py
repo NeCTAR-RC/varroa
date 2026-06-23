@@ -103,6 +103,14 @@ class TestAdminSecurityRiskTypesAPI(base.ApiTestCase):
             data['display_name'], created_risk_type['display_name']
         )
 
+    def test_security_risk_type_create_duplicate_name(self):
+        data = {"name": "dupe-type", "description": "first"}
+        first = self.client.post("/v1/security-risk-types/", json=data)
+        self.assertStatus(first, 201)
+
+        second = self.client.post("/v1/security-risk-types/", json=data)
+        self.assertStatus(second, 409)
+
     def test_security_risk_type_delete(self):
         risk_type = self.create_security_risk_type()
         response = self.client.delete(

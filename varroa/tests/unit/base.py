@@ -87,9 +87,19 @@ class TestCase(flask_testing.TestCase):
     def create_security_risk_type(
         self, name='ssh-password', description="Don't allow root to ssh"
     ):
-        sr_type = models.SecurityRiskType(name=name, description=description)
-        db.session.add(sr_type)
-        db.session.commit()
+        # Get-or-create by name: the name is unique, and create_security_risk
+        # calls this with the default name on every invocation.
+        sr_type = (
+            db.session.query(models.SecurityRiskType)
+            .filter_by(name=name)
+            .first()
+        )
+        if sr_type is None:
+            sr_type = models.SecurityRiskType(
+                name=name, description=description
+            )
+            db.session.add(sr_type)
+            db.session.commit()
         return sr_type
 
     def create_security_risk(
