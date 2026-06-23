@@ -58,11 +58,4 @@ class ConsumerService(cotyledon.Service):
                 'final messages to be processed...'
             )
             self.message_listener.wait()
-        if self.endpoints:
-            LOG.info('Shutting down endpoint worker executors...')
-            for e in self.endpoints:
-                try:
-                    e.worker.executor.shutdown()
-                except AttributeError:
-                    pass
         super().terminate()
