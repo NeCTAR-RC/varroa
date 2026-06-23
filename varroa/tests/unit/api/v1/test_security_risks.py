@@ -72,6 +72,17 @@ class TestAdminSecurityRisksAPI(base.ApiTestCase):
         results = response.get_json().get("results")
         self.assertEqual(1, len(results))
 
+    def test_security_risks_list_all_projects_false(self):
+        # all_projects=false must not widen the query (it previously coerced
+        # to True). The risk belongs to no project, so a scoped admin query
+        # returns nothing.
+        self.create_security_risk()
+        response = self.client.get("/v1/security-risks/?all_projects=false")
+
+        self.assert200(response)
+        results = response.get_json().get("results")
+        self.assertEqual(0, len(results))
+
     def test_security_risk_detail(self):
         risk = self.create_security_risk()
         response = self.client.get(f"/v1/security-risks/{risk.id}/")

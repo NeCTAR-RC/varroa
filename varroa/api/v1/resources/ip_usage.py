@@ -13,6 +13,7 @@
 
 
 import flask_restful
+from flask_restful import inputs
 from flask_restful import reqparse
 from oslo_log import log as logging
 from oslo_policy import policy
@@ -45,7 +46,9 @@ class IPUsageList(base.Resource):
 
         parser = reqparse.RequestParser()
         parser.add_argument("limit", type=int, location="args")
-        parser.add_argument("all_projects", type=bool, location="args")
+        parser.add_argument(
+            "all_projects", type=inputs.boolean, location="args"
+        )
         parser.add_argument("project_id", type=str, location="args")
         parser.add_argument("ip", type=str, location="args")
         args = parser.parse_args()
