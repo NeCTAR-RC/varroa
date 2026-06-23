@@ -42,6 +42,16 @@ def app_context(f):
 class Manager:
     def __init__(self):
         self.app = app.create_app(init_config=False)
+        self._openstack = None
+
+    def _get_openstack(self):
+        # Build the keystone session and SDK connection once and reuse them;
+        # keystoneauth refreshes the token as needed, so a fresh session per
+        # call only forced a re-authentication each time.
+        if self._openstack is None:
+            k_session = keystone.KeystoneSession().get_session()
+            self._openstack = clients.get_openstack(k_session)
+        return self._openstack
 
     @app_context
     def process_security_risk(self, security_risk_id):
@@ -145,9 +155,7 @@ class Manager:
         ipaddress = security_risk.ipaddress
         LOG.debug("Searching for port with ip=%s", ipaddress)
 
-        k_session = keystone.KeystoneSession().get_session()
-
-        openstack = clients.get_openstack(k_session)
+        openstack = self._get_openstack()
         port = None
         ports = openstack.list_ports(
             filters={'fixed_ips': f'ip_address={ipaddress}'}

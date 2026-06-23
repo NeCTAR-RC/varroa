@@ -46,6 +46,16 @@ class NotificationEndpoints:
     def __init__(self):
         self.app = app.create_app(init_config=False)
         self.notifier = rpc.get_notifier()
+        self._openstack = None
+
+    def _get_openstack(self):
+        # Build the keystone session and SDK connection once and reuse them;
+        # keystoneauth refreshes the token as needed, so a fresh session per
+        # notification only forced a re-authentication each time.
+        if self._openstack is None:
+            k_session = keystone.KeystoneSession().get_session()
+            self._openstack = clients.get_openstack(k_session)
+        return self._openstack
 
     def sample(self, ctxt, publisher_id, event_type, payload, metadata):
         LOG.debug("Processing notification for payload %s", payload)
@@ -111,8 +121,7 @@ class NotificationEndpoints:
     @app_context
     def handle_create_update(self, port_id):
         LOG.debug("Handle start/update for %s", port_id)
-        k_session = keystone.KeystoneSession().get_session()
-        client = clients.get_openstack(k_session)
+        client = self._get_openstack()
         try:
             port = client.get_port_by_id(port_id)
         except openstack.exceptions.ResourceNotFound:
