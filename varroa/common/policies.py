@@ -11,15 +11,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
-from oslo_config import cfg
 from oslo_policy import policy
 
-
-CONF = cfg.CONF
-_POLICY_PATH = "/etc/varroa/policy.yaml"
-
-
-enforcer = policy.Enforcer(CONF, policy_file=_POLICY_PATH)
 
 READER_OR_OWNER = "reader_or_owner"
 
@@ -175,11 +168,6 @@ security_risk_rules = [
         operations=[{'path': '/v1/security-risks/', 'method': 'POST'}],
     ),
 ]
-
-enforcer.register_defaults(base_rules)
-enforcer.register_defaults(ip_usage_rules)
-enforcer.register_defaults(security_risk_type_rules)
-enforcer.register_defaults(security_risk_rules)
 
 
 def list_rules():
