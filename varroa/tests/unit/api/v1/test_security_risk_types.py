@@ -74,6 +74,17 @@ class TestAdminSecurityRiskTypesAPI(base.ApiTestCase):
         self.assertIsNone(created_risk_type['help_url'])
         self.assertIsNone(created_risk_type['display_name'])
 
+    def test_security_risk_type_create_without_description(self):
+        # description maps to a nullable column and must be optional; this
+        # previously raised a TypeError and returned 500.
+        data = {"name": "no-description-type"}
+        response = self.client.post("/v1/security-risk-types/", json=data)
+
+        self.assertStatus(response, 201)
+        created_risk_type = response.get_json()
+        self.assertEqual(data['name'], created_risk_type['name'])
+        self.assertIsNone(created_risk_type['description'])
+
     def test_security_risk_type_create_optionals(self):
         data = {
             "name": "test-risk-type",

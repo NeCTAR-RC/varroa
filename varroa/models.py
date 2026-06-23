@@ -64,7 +64,9 @@ class SecurityRiskType(db.Model):
     description = db.Column(db.Text())
     help_url = db.Column(db.String(255))
 
-    def __init__(self, name, description, display_name=None, help_url=None):
+    def __init__(
+        self, name, description=None, display_name=None, help_url=None
+    ):
         self.id = uuidutils.generate_uuid()
         self.name = name
         self.description = description

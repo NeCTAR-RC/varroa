@@ -18,6 +18,7 @@ from flask_restful import reqparse
 import marshmallow
 from oslo_log import log as logging
 from oslo_policy import policy
+from sqlalchemy import exc as sa_exc
 
 from varroa.api.v1.resources import base
 from varroa.api.v1.schemas import security_risk_type as schemas
@@ -65,7 +66,11 @@ class SecurityRiskTypeList(base.Resource):
             return err.messages, 422
 
         db.session.add(security_risk_type)
-        db.session.commit()
+        try:
+            db.session.commit()
+        except sa_exc.IntegrityError:
+            db.session.rollback()
+            return {'error_message': 'Security risk type already exists'}, 409
 
         return schemas.security_risk_type.dump(security_risk_type), 201
 
@@ -114,7 +119,11 @@ class SecurityRiskType(base.Resource):
             data, instance=security_risk_type
         )
 
-        db.session.commit()
+        try:
+            db.session.commit()
+        except sa_exc.IntegrityError:
+            db.session.rollback()
+            return {'error_message': 'Security risk type already exists'}, 409
 
         return self.schema.dump(security_risk_type)
 
