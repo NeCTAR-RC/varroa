@@ -142,6 +142,18 @@ class TestAdminSecurityRisksAPI(base.ApiTestCase):
         error_data = response.get_json()
         self.assertIn('Type does not exist', error_data['error_message'])
 
+    def test_security_risk_create_with_invalid_ip(self):
+        sr_type = self.create_security_risk_type()
+        data = {
+            "ipaddress": "not-an-ip",
+            "time": "2024-03-01T12:00:00+00:00",
+            "type_id": sr_type.id,
+            'expires': '2024-03-02T12:00:00+00:00',
+        }
+        response = self.client.post("/v1/security-risks/", json=data)
+
+        self.assertStatus(response, 422)
+
     def test_security_risk_create_with_private_ip(self):
         sr_type = self.create_security_risk_type()
         data = {

@@ -11,12 +11,21 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+import ipaddress
+
 import marshmallow
 from oslo_utils import timeutils
 
 from varroa.api.v1.schemas import security_risk_type
 from varroa.extensions import ma
 from varroa import models
+
+
+def _validate_ipaddress(value):
+    try:
+        ipaddress.ip_address(value)
+    except (ValueError, TypeError) as exc:
+        raise marshmallow.ValidationError("Not a valid IP address.") from exc
 
 
 class UTCDateTime(marshmallow.fields.DateTime):
@@ -49,6 +58,7 @@ class SecurityRiskSchema(ma.SQLAlchemyAutoSchema):
 class SecurityRiskCreateSchema(ma.SQLAlchemyAutoSchema):
     time = UTCDateTime(format='%Y-%m-%dT%H:%M:%S%z', required=True)
     expires = UTCDateTime(format='%Y-%m-%dT%H:%M:%S%z', required=True)
+    ipaddress = ma.auto_field(validate=_validate_ipaddress)
 
     class Meta:
         model = models.SecurityRisk
