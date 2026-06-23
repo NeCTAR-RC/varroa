@@ -97,12 +97,6 @@ class SecurityRiskType(base.Resource):
         return self.schema.dump(security_risk_type)
 
     def patch(self, id):
-        data = request.get_json()
-
-        errors = schemas.security_risk_typeupdate.validate(data)
-        if errors:
-            flask_restful.abort(400, message=errors)
-
         security_risk_type = self._get_security_risk_type(id)
         try:
             self.authorize('update')
@@ -111,9 +105,10 @@ class SecurityRiskType(base.Resource):
                 404, message=f"SecurityRiskType {id} dosn't exist"
             )
 
+        data = request.get_json()
         errors = schemas.security_risk_typeupdate.validate(data)
         if errors:
-            flask_restful.abort(401, message="Not authorized to edit")
+            flask_restful.abort(400, message=errors)
 
         security_risk_type = schemas.security_risk_typeupdate.load(
             data, instance=security_risk_type

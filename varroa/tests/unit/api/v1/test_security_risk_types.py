@@ -40,6 +40,17 @@ class TestSecurityRiskTypesAPI(base.ApiTestCase):
 
         self.assert403(response)
 
+    def test_security_risk_type_update_forbidden(self):
+        # A non-admin is not authorised to edit, and gets a 404 rather than a
+        # mislabelled 401.
+        risk_type = self.create_security_risk_type()
+        response = self.client.patch(
+            f"/v1/security-risk-types/{risk_type.id}/",
+            json={"name": "new-name"},
+        )
+
+        self.assert404(response)
+
 
 class TestAdminSecurityRiskTypesAPI(base.ApiTestCase):
     ROLES = ['admin']
@@ -110,6 +121,15 @@ class TestAdminSecurityRiskTypesAPI(base.ApiTestCase):
 
         second = self.client.post("/v1/security-risk-types/", json=data)
         self.assertStatus(second, 409)
+
+    def test_security_risk_type_update_invalid(self):
+        risk_type = self.create_security_risk_type()
+        response = self.client.patch(
+            f"/v1/security-risk-types/{risk_type.id}/",
+            json={"name": "x" * 65},
+        )
+
+        self.assertStatus(response, 400)
 
     def test_security_risk_type_delete(self):
         risk_type = self.create_security_risk_type()
