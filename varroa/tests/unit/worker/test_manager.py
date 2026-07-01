@@ -398,3 +398,96 @@ class TestManager(base.TestCase):
         result = manager._find_and_create_ip_usage(security_risk)
 
         self.assertIsNone(result)
+
+    @freeze_time("2024-01-01")
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_reconcile_open_ip_usages_ends_missing(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # An open IP usage whose port no longer exists in neutron is ended.
+        ip_usage = self.create_ip_usage()
+        mock_get_openstack.return_value.list_ports.return_value = []
+
+        manager = worker_manager.Manager()
+        manager.reconcile_open_ip_usages()
+
+        updated = models.IPUsage.query.get(ip_usage.id)
+        self.assertEqual(updated.end, datetime.datetime(2024, 1, 1))
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_reconcile_open_ip_usages_keeps_existing(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # An open IP usage whose port still exists is left open.
+        ip_usage = self.create_ip_usage()
+        mock_get_openstack.return_value.list_ports.return_value = [
+            mock.Mock(id=base.PORT_ID)
+        ]
+
+        manager = worker_manager.Manager()
+        manager.reconcile_open_ip_usages()
+
+        updated = models.IPUsage.query.get(ip_usage.id)
+        self.assertIsNone(updated.end)
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_reconcile_open_ip_usages_ignores_ended(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # Already-ended rows are not selected, so neutron is not queried.
+        end = datetime.datetime(2023, 1, 1)
+        ip_usage = self.create_ip_usage(end=end)
+
+        manager = worker_manager.Manager()
+        manager.reconcile_open_ip_usages()
+
+        updated = models.IPUsage.query.get(ip_usage.id)
+        self.assertEqual(updated.end, end)
+        mock_get_openstack.return_value.list_ports.assert_not_called()
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_reconcile_open_ip_usages_batches(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # More open rows than PORT_ID_QUERY_BATCH are queried in chunks, and
+        # every port that neutron confirms exists is left open.
+        count = worker_manager.PORT_ID_QUERY_BATCH + 50
+        for i in range(count):
+            self.create_ip_usage(port_id=f"port-{i}")
+
+        def fake_list_ports(filters):
+            return [mock.Mock(id=pid) for pid in filters["id"]]
+
+        mock_get_openstack.return_value.list_ports.side_effect = (
+            fake_list_ports
+        )
+
+        manager = worker_manager.Manager()
+        manager.reconcile_open_ip_usages()
+
+        self.assertEqual(
+            mock_get_openstack.return_value.list_ports.call_count, 2
+        )
+        self.assertEqual(
+            models.IPUsage.query.filter(
+                models.IPUsage.end.isnot(None)
+            ).count(),
+            0,
+        )
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_reconcile_open_ip_usages_neutron_error_aborts(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # A neutron error propagates and no row is ended; the task retries
+        # on the next interval.
+        ip_usage = self.create_ip_usage()
+        mock_get_openstack.return_value.list_ports.side_effect = RuntimeError(
+            "neutron unavailable"
+        )
+
+        manager = worker_manager.Manager()
+        self.assertRaises(RuntimeError, manager.reconcile_open_ip_usages)
+
+        updated = models.IPUsage.query.get(ip_usage.id)
+        self.assertIsNone(updated.end)

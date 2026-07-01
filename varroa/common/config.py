@@ -52,6 +52,7 @@ database_opts = [
 worker_opts = [
     cfg.IntOpt("workers", default=1),
     cfg.IntOpt("periodic_task_interval", default=1800),
+    cfg.IntOpt("reconcile_interval", default=86400),
 ]
 
 cfg.CONF.register_opts(worker_opts, group="worker")

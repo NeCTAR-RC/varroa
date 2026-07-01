@@ -29,6 +29,10 @@ from varroa import models
 CONF = cfg.CONF
 LOG = logging.getLogger(__name__)
 
+# Neutron 'id' filter is sent as repeated query params; cap the batch so the
+# request URL stays well under typical server limits.
+PORT_ID_QUERY_BATCH = 100
+
 
 def app_context(f):
     @functools.wraps(f)
@@ -244,6 +248,53 @@ class Manager:
             LOG.info(f"Deleting expired risk {risk}")
             db.session.delete(risk)
         db.session.commit()
+
+    @app_context
+    def reconcile_open_ip_usages(self):
+        """Close IP usages whose port was deleted without an end notification.
+
+        A missed port.delete.end leaves an IPUsage open forever, so the IP
+        looks permanently owned by a resource that no longer exists. Ask
+        neutron which of our open ports still exist (batched id filter) and
+        end the rest. Only the ports we track are queried, never the whole
+        cloud.
+        """
+        LOG.info("Reconciling open IP usages against neutron")
+        open_usages = (
+            db.session.query(models.IPUsage)
+            .filter(models.IPUsage.end.is_(None))
+            .all()
+        )
+        if not open_usages:
+            return
+
+        port_ids = [iu.port_id for iu in open_usages]
+        openstack = self._get_openstack()
+        existing = set()
+        for i in range(0, len(port_ids), PORT_ID_QUERY_BATCH):
+            chunk = port_ids[i : i + PORT_ID_QUERY_BATCH]
+            # Build the full set of surviving ports before touching any row.
+            # A neutron/keystone error propagates here, aborting the run with
+            # nothing committed; the task simply retries next interval.
+            ports = openstack.list_ports(filters={"id": chunk, "fields": "id"})
+            existing.update(port.id for port in ports)
+
+        # The real deletion time is unknown (we missed the event), so record
+        # "detected gone now". All datetimes are stored as naive UTC.
+        now = timeutils.utcnow()
+        ended = 0
+        for iu in open_usages:
+            if iu.port_id not in existing:
+                LOG.info(
+                    "Port %s for IP usage %s no longer exists, ending",
+                    iu.port_id,
+                    iu.id,
+                )
+                iu.end = now
+                db.session.add(iu)
+                ended += 1
+        db.session.commit()
+        LOG.info("Ended %s IP usages with deleted ports", ended)
 
     def reprocess_new_risks(self):
         """Re-drive security risks that were never processed.

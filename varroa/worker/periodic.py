@@ -43,12 +43,18 @@ class PeriodicTaskService(cotyledon.Service):
         LOG.info("Running periodic task reprocess_new_risks")
         self.manager.reprocess_new_risks()
 
+    @periodics.periodic(CONF.worker.reconcile_interval)
+    def reconcile_open_ip_usages(self):
+        LOG.info("Running periodic task reconcile_open_ip_usages")
+        self.manager.reconcile_open_ip_usages()
+
     def run(self):
         LOG.info("Starting periodic task thread...")
 
         callables = [
             (self.clean_expired_risks, (), {}),
             (self.reprocess_new_risks, (), {}),
+            (self.reconcile_open_ip_usages, (), {}),
         ]
         self.worker = periodics.PeriodicWorker(callables)
         self.t = threading.Thread(target=self.worker.start, daemon=True)
