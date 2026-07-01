@@ -44,6 +44,10 @@ class TestPeriodicTaskService(base.TestCase):
         self.service.reprocess_new_risks()
         self.mock_manager.reprocess_new_risks.assert_called_once_with()
 
+    def test_reconcile_open_ip_usages(self, mock_create_app):
+        self.service.reconcile_open_ip_usages()
+        self.mock_manager.reconcile_open_ip_usages.assert_called_once_with()
+
     @mock.patch('threading.Thread')
     @mock.patch('futurist.periodics.PeriodicWorker')
     def test_run(self, mock_periodic_worker, mock_thread, mock_create_app):
@@ -57,13 +61,18 @@ class TestPeriodicTaskService(base.TestCase):
         # Verify PeriodicWorker was created with correct callables
         mock_periodic_worker.assert_called_once()
         callables = mock_periodic_worker.call_args[0][0]
-        self.assertEqual(len(callables), 2)
+        self.assertEqual(len(callables), 3)
         self.assertEqual(callables[0][0], self.service.clean_expired_risks)
         self.assertEqual(callables[0][1], ())
         self.assertEqual(callables[0][2], {})
         self.assertEqual(callables[1][0], self.service.reprocess_new_risks)
         self.assertEqual(callables[1][1], ())
         self.assertEqual(callables[1][2], {})
+        self.assertEqual(
+            callables[2][0], self.service.reconcile_open_ip_usages
+        )
+        self.assertEqual(callables[2][1], ())
+        self.assertEqual(callables[2][2], {})
 
         # Verify thread was created and started
         mock_thread.assert_called_once_with(
