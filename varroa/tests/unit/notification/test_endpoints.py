@@ -330,6 +330,18 @@ class TestEndpoints(base.TestCase):
         result = ep.sample(self.context, "pub-id", "event", [{}], {})
         self.assertEqual(messaging.NotificationResult.HANDLED, result)
 
+    @mock.patch("varroa.notification.endpoints.clients")
+    def test_sample_missing_resource_id_acked(self, mock_clients, mock_app):
+        # A port event without a resource_id trait has no port to look up
+        # and redelivery cannot fix it, so it is acked without touching
+        # neutron rather than requeued as a poison message.
+        ep = endpoints.NotificationEndpoints()
+        payload = self._get_payload("port.create.end", None)
+        result = ep.sample(self.context, "pub-id", "event", payload, {})
+        self.assertEqual(messaging.NotificationResult.HANDLED, result)
+        mock_clients.get_openstack.assert_not_called()
+        self.assertEqual(0, db.session.query(models.IPUsage).count())
+
     def test_sample_handler_error_requeued(self, mock_app):
         # A transient handler failure is requeued so the event is redelivered
         # rather than silently lost.

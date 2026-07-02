@@ -71,6 +71,17 @@ class NotificationEndpoints:
             LOG.exception(e)
             return messaging.NotificationResult.HANDLED
 
+        if not port_id:
+            # Without a resource_id trait there is no port to look up, and
+            # redelivery cannot add one, so ack the message rather than let
+            # the handler crash into a requeue loop (e.g. neutron bulk port
+            # creation emits port.create.end without a single port id).
+            LOG.error(
+                "Discarding notification with no resource_id trait: %s",
+                payload,
+            )
+            return messaging.NotificationResult.HANDLED
+
         try:
             if event_type == "port.delete.end":
                 self.handle_end(port_id, generated)
