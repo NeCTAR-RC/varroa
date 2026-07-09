@@ -76,7 +76,9 @@ class NotificationEndpoints:
             # redelivery cannot add one, so ack the message rather than let
             # the handler crash into a requeue loop (e.g. neutron bulk port
             # creation emits port.create.end without a single port id).
-            LOG.error(
+            # Debug level: *.start events routinely lack a resource_id, so
+            # this is expected noise, not an operational problem.
+            LOG.debug(
                 "Discarding notification with no resource_id trait: %s",
                 payload,
             )
