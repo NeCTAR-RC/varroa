@@ -18,3 +18,4 @@ cotyledon
 pymysql
 python-memcached
 prometheus_client
+sentry-sdk

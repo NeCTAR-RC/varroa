@@ -55,6 +55,21 @@ worker_opts = [
     cfg.IntOpt("reconcile_interval", default=86400),
 ]
 
+sentry_opts = [
+    cfg.StrOpt(
+        "dsn",
+        secret=True,
+        help="GlitchTip/Sentry compatible DSN. When set, unhandled "
+        "exceptions and ERROR level log messages are reported.",
+    ),
+    cfg.StrOpt(
+        "environment",
+        help="Environment name reported with each event, "
+        "e.g. production or testing.",
+    ),
+]
+
+cfg.CONF.register_opts(sentry_opts, group="sentry")
 cfg.CONF.register_opts(worker_opts, group="worker")
 cfg.CONF.register_opts(database_opts, group="database")
 cfg.CONF.register_opts(flask_opts, group="flask")
@@ -105,6 +120,7 @@ def list_opts():
         ("worker", worker_opts),
         ("database", database_opts),
         ("flask", flask_opts),
+        ("sentry", sentry_opts),
         add_auth_opts(),
     ]
 
