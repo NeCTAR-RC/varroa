@@ -138,7 +138,11 @@ class NotificationEndpoints:
         try:
             port = client.get_port_by_id(port_id)
         except openstack.exceptions.ResourceNotFound:
-            LOG.error("Failed to find port with ID %s", port_id)
+            # The port was deleted between the notification being emitted
+            # and us processing it (common for short-lived ports). The
+            # port.delete.end event closes any existing usage record, so
+            # there is nothing to track and nothing an operator can act on.
+            LOG.info("Port %s no longer exists, skipping", port_id)
             return
 
         if port.device_owner.startswith("compute:"):

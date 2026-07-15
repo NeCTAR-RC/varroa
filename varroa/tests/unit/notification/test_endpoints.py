@@ -14,6 +14,7 @@
 from datetime import datetime
 from unittest import mock
 
+import openstack
 import oslo_messaging as messaging
 from oslo_utils import uuidutils
 
@@ -248,6 +249,23 @@ class TestEndpoints(base.TestCase):
         payload = self._get_payload("port.create.end", port_id)
         ep.sample(self.context, "pub-id", "event", payload, {})
 
+        self.assertEqual(0, db.session.query(models.IPUsage).count())
+
+    @mock.patch("varroa.notification.endpoints.clients")
+    def test_port_create_port_gone_acked(self, mock_clients, mock_app):
+        # The port was deleted before the notification was processed, so the
+        # neutron lookup 404s. This is an expected race (port.delete.end
+        # closes any usage record): the event is acked, not requeued, and no
+        # usage record is created.
+        client = mock_clients.get_openstack.return_value
+        client.get_port_by_id.side_effect = (
+            openstack.exceptions.ResourceNotFound()
+        )
+        ep = endpoints.NotificationEndpoints()
+        port_id = uuidutils.generate_uuid()
+        payload = self._get_payload("port.create.end", port_id)
+        result = ep.sample(self.context, "pub-id", "event", payload, {})
+        self.assertEqual(messaging.NotificationResult.HANDLED, result)
         self.assertEqual(0, db.session.query(models.IPUsage).count())
 
     @mock.patch("varroa.notification.endpoints.clients")
