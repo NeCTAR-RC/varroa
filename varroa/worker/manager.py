@@ -109,12 +109,14 @@ class Manager:
                 )
                 .one_or_none()
             )
-        except sa_exc.MultipleResultsFound as e:
+        except sa_exc.MultipleResultsFound:
             security_risk.status = models.SecurityRisk.ERROR
             db.session.add(security_risk)
             db.session.commit()
-            LOG.error("Found multiple records!")
-            LOG.exception(e)
+            LOG.exception(
+                "Found multiple IP usage records for security risk %s",
+                security_risk_id,
+            )
             return
 
         if ip_usage is None:
@@ -245,7 +247,7 @@ class Manager:
             .all()
         )
         for risk in risks:
-            LOG.info(f"Deleting expired risk {risk}")
+            LOG.info("Deleting expired risk %s", risk)
             db.session.delete(risk)
         db.session.commit()
 

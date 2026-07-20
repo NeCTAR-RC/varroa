@@ -103,9 +103,8 @@ class SecurityRiskList(base.Resource):
         except exceptions.InvalidSecurityRisk as err:
             LOG.info("Failed to create security_risk: %s", err)
             return {'error_message': str(err)}, 401
-        except Exception as err:
-            LOG.error("Failed to create security risk")
-            LOG.exception(err)
+        except Exception:
+            LOG.exception("Failed to create security risk")
             return {'error_message': 'Unexpected API Error.'}, 500
 
         return schemas.security_risk.dump(security_risk), 201

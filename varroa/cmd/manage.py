@@ -89,9 +89,8 @@ def backfill_ports():
                 port_created = datetime.datetime.strptime(
                     port.created_at, "%Y-%m-%dT%H:%M:%SZ"
                 )
-            except TypeError as e:
-                LOG.error("Port %s has an invalid created_at", port.id)
-                LOG.exception(e)
+            except TypeError:
+                LOG.exception("Port %s has an invalid created_at", port.id)
                 continue
 
             ip_usage = models.IPUsage(
