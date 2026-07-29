@@ -134,6 +134,51 @@ class TestManager(base.TestCase):
         self.assertIsNotNone(models.SecurityRisk.query.get(security_risk.id))
 
     @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_resource_first(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # A resource-first risk is already attributed, so no IP usage
+        # matching or neutron lookup happens.
+        manager = worker_manager.Manager()
+        security_risk = self.create_resource_security_risk()
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.status, models.SecurityRisk.PROCESSED)
+        self.assertEqual(updated_sr.project_id, base.PROJECT_ID)
+        self.assertEqual(updated_sr.resource_id, base.RESOURCE_ID)
+        self.assertEqual(updated_sr.resource_type, 'cluster')
+        self.assertIsNone(updated_sr.ipaddress)
+        mock_get_openstack.return_value.list_ports.assert_not_called()
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_resource_first_dupe(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # Re-reporting the same resource risk refreshes the existing risk
+        # and drops the new one.
+        manager = worker_manager.Manager()
+        esr = self.create_resource_security_risk(
+            time=datetime.datetime(2019, 1, 1),
+            expires=datetime.datetime(2019, 2, 1),
+        )
+        esr.status = models.SecurityRisk.PROCESSED
+        db.session.add(esr)
+        db.session.commit()
+
+        security_risk = self.create_resource_security_risk()
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_esr = models.SecurityRisk.query.get(esr.id)
+        self.assertEqual(updated_esr.expires, security_risk.expires)
+        self.assertEqual(updated_esr.time, security_risk.time)
+        self.assertEqual(updated_esr.last_seen, security_risk.time)
+        self.assertEqual(updated_esr.first_seen, datetime.datetime(2019, 1, 1))
+        self.assertIsNone(models.SecurityRisk.query.get(security_risk.id))
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
     def test_process_security_risk_transient_error_leaves_new(
         self, mock_get_openstack, mock_create_app
     ):

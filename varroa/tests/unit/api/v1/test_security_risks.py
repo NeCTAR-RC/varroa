@@ -170,6 +170,64 @@ class TestAdminSecurityRisksAPI(base.ApiTestCase):
             'Private IP addresses are not allowed', error_data['error_message']
         )
 
+    def test_security_risk_create_resource_first(self):
+        sr_type = self.create_security_risk_type()
+        data = {
+            "time": "2024-02-29T12:00:00+00:00",
+            "type_id": sr_type.id,
+            'expires': '2024-03-01T12:00:00+00:00',
+            'project_id': base.PROJECT_ID,
+            'resource_id': base.RESOURCE_ID,
+            'resource_type': 'cluster',
+        }
+        response = self.client.post("/v1/security-risks/", json=data)
+
+        self.assertStatus(response, 201)
+        created_risk = response.get_json()
+        self.assertIsNone(created_risk['ipaddress'])
+        self.assertEqual(base.PROJECT_ID, created_risk['project_id'])
+        self.assertEqual(base.RESOURCE_ID, created_risk['resource_id'])
+        self.assertEqual('cluster', created_risk['resource_type'])
+        self.assertEqual(models.SecurityRisk.NEW, created_risk['status'])
+
+    def test_security_risk_create_partial_resource_fields(self):
+        sr_type = self.create_security_risk_type()
+        data = {
+            "time": "2024-02-29T12:00:00+00:00",
+            "type_id": sr_type.id,
+            'expires': '2024-03-01T12:00:00+00:00',
+            'resource_id': base.RESOURCE_ID,
+        }
+        response = self.client.post("/v1/security-risks/", json=data)
+
+        self.assertStatus(response, 422)
+
+    def test_security_risk_create_no_ip_or_resource(self):
+        sr_type = self.create_security_risk_type()
+        data = {
+            "time": "2024-02-29T12:00:00+00:00",
+            "type_id": sr_type.id,
+            'expires': '2024-03-01T12:00:00+00:00',
+        }
+        response = self.client.post("/v1/security-risks/", json=data)
+
+        self.assertStatus(response, 422)
+
+    def test_security_risk_create_ip_and_resource(self):
+        sr_type = self.create_security_risk_type()
+        data = {
+            "ipaddress": "203.0.113.4",
+            "time": "2024-02-29T12:00:00+00:00",
+            "type_id": sr_type.id,
+            'expires': '2024-03-01T12:00:00+00:00',
+            'project_id': base.PROJECT_ID,
+            'resource_id': base.RESOURCE_ID,
+            'resource_type': 'cluster',
+        }
+        response = self.client.post("/v1/security-risks/", json=data)
+
+        self.assertStatus(response, 422)
+
     def test_security_risk_delete(self):
         risk = self.create_security_risk()
         response = self.client.delete(f"/v1/security-risks/{risk.id}/")

@@ -91,48 +91,51 @@ class Manager:
             return
         security_risk.status = models.SecurityRisk.PROCESSED
 
-        try:
-            ip_usage = (
-                db.session.query(models.IPUsage)
-                .filter_by(ip=security_risk.ipaddress)
-                .filter(
-                    db.or_(
-                        db.and_(
-                            models.IPUsage.start <= security_risk.time,
-                            models.IPUsage.end >= security_risk.time,
-                        ),
-                        db.and_(
-                            models.IPUsage.start <= security_risk.time,
-                            models.IPUsage.end.is_(None),
-                        ),
+        # Resource-first risks arrive fully attributed; only IP-reported
+        # risks need matching against the IP usage history.
+        if security_risk.resource_id is None:
+            try:
+                ip_usage = (
+                    db.session.query(models.IPUsage)
+                    .filter_by(ip=security_risk.ipaddress)
+                    .filter(
+                        db.or_(
+                            db.and_(
+                                models.IPUsage.start <= security_risk.time,
+                                models.IPUsage.end >= security_risk.time,
+                            ),
+                            db.and_(
+                                models.IPUsage.start <= security_risk.time,
+                                models.IPUsage.end.is_(None),
+                            ),
+                        )
                     )
+                    .one_or_none()
                 )
-                .one_or_none()
-            )
-        except sa_exc.MultipleResultsFound:
-            security_risk.status = models.SecurityRisk.ERROR
-            db.session.add(security_risk)
-            db.session.commit()
-            LOG.exception(
-                "Found multiple IP usage records for security risk %s",
-                security_risk_id,
-            )
-            return
+            except sa_exc.MultipleResultsFound:
+                security_risk.status = models.SecurityRisk.ERROR
+                db.session.add(security_risk)
+                db.session.commit()
+                LOG.exception(
+                    "Found multiple IP usage records for security risk %s",
+                    security_risk_id,
+                )
+                return
 
-        if ip_usage is None:
-            ip_usage = self._find_and_create_ip_usage(security_risk)
-        else:
-            LOG.debug("Found existing IP usage record")
+            if ip_usage is None:
+                ip_usage = self._find_and_create_ip_usage(security_risk)
+            else:
+                LOG.debug("Found existing IP usage record")
 
-        if ip_usage is not None:
-            security_risk.project_id = ip_usage.project_id
-            security_risk.resource_id = ip_usage.resource_id
-            security_risk.resource_type = ip_usage.resource_type
-            LOG.info(
-                "Matched %s to resource %s",
-                security_risk.ipaddress,
-                ip_usage.resource_id,
-            )
+            if ip_usage is not None:
+                security_risk.project_id = ip_usage.project_id
+                security_risk.resource_id = ip_usage.resource_id
+                security_risk.resource_type = ip_usage.resource_type
+                LOG.info(
+                    "Matched %s to resource %s",
+                    security_risk.ipaddress,
+                    ip_usage.resource_id,
+                )
         dupe_security_risk = (
             db.session.query(models.SecurityRisk)
             .filter_by(resource_id=security_risk.resource_id)

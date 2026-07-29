@@ -90,8 +90,10 @@ class SecurityRiskList(base.Resource):
         except marshmallow.ValidationError as err:
             return {'error_message': err.messages}, 422
 
-        # Check if the IP address is private
-        if utils.is_private_ip(security_risk.ipaddress):
+        # Check if the IP address is private (resource-first risks have none)
+        if security_risk.ipaddress and utils.is_private_ip(
+            security_risk.ipaddress
+        ):
             return {
                 'error_message': 'Private IP addresses are not allowed'
             }, 400

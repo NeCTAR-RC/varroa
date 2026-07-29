@@ -91,14 +91,27 @@ class SecurityRisk(db.Model):
         db.String(64), db.ForeignKey(SecurityRiskType.id), nullable=False
     )
     type = db.relationship(SecurityRiskType)
-    ipaddress = db.Column(db.String(64), nullable=False)
+    # A risk is either IP-reported (ipaddress set, resource resolved later
+    # by the worker) or resource-first (resource fields set at creation, no
+    # IP involved), so ipaddress is nullable.
+    ipaddress = db.Column(db.String(64), nullable=True)
     port = db.Column(db.Integer, nullable=True)
     expires = db.Column(db.DateTime(), nullable=False)
     project_id = db.Column(db.String(64), nullable=True)
     resource_id = db.Column(db.String(64), nullable=True)
     resource_type = db.Column(db.String(64), nullable=True)
 
-    def __init__(self, time, type_id, ipaddress, expires, port=None):
+    def __init__(
+        self,
+        time,
+        type_id,
+        expires,
+        ipaddress=None,
+        port=None,
+        project_id=None,
+        resource_id=None,
+        resource_type=None,
+    ):
         self.id = uuidutils.generate_uuid()
         self.status = self.NEW
         self.time = time
@@ -111,3 +124,6 @@ class SecurityRisk(db.Model):
         self.ipaddress = ipaddress
         self.expires = expires
         self.port = port
+        self.project_id = project_id
+        self.resource_id = resource_id
+        self.resource_type = resource_type

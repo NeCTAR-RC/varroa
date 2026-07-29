@@ -56,6 +56,8 @@ class SecurityRiskSchema(ma.SQLAlchemyAutoSchema):
 
 
 class SecurityRiskCreateSchema(ma.SQLAlchemyAutoSchema):
+    RESOURCE_FIELDS = ('project_id', 'resource_id', 'resource_type')
+
     time = UTCDateTime(format='%Y-%m-%dT%H:%M:%S%z', required=True)
     expires = UTCDateTime(format='%Y-%m-%dT%H:%M:%S%z', required=True)
     ipaddress = ma.auto_field(validate=_validate_ipaddress)
@@ -68,12 +70,29 @@ class SecurityRiskCreateSchema(ma.SQLAlchemyAutoSchema):
         exclude = (
             'id',
             'status',
-            'project_id',
-            'resource_id',
-            'resource_type',
             'first_seen',
             'last_seen',
         )
+
+    @marshmallow.validates_schema
+    def _validate_report_mode(self, data, **kwargs):
+        """A risk is reported by IP or by resource, never both.
+
+        IP-reported risks are attributed to a resource later by the worker;
+        resource-first risks must arrive fully attributed, so the resource
+        fields are all-or-nothing.
+        """
+        resource_fields = [f for f in self.RESOURCE_FIELDS if data.get(f)]
+        if data.get('ipaddress'):
+            if resource_fields:
+                raise marshmallow.ValidationError(
+                    "ipaddress and resource fields are mutually exclusive."
+                )
+        elif len(resource_fields) != len(self.RESOURCE_FIELDS):
+            raise marshmallow.ValidationError(
+                "Either ipaddress or all of project_id, resource_id and "
+                "resource_type must be provided."
+            )
 
 
 security_risk = SecurityRiskSchema()
