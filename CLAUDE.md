@@ -12,11 +12,11 @@ owners can see and remediate their exposures. See `README.md` for domain concept
 
 ## Commands
 
-Tests run via `tox` (envlist defaults to `pep8` + `py312`).
+Tests run via `tox` (envlist defaults to `pep8` + `py314`).
 
 - `tox` — run lint and the full unit test suite
-- `tox -e py312` — run unit tests only (stestr)
-- `tox -e py312 -- <regex>` — run a subset, e.g. `tox -e py312 -- varroa.tests.unit.api.v1.test_security_risks`
+- `tox -e py314` — run unit tests only (stestr)
+- `tox -e py314 -- <regex>` — run a subset, e.g. `tox -e py314 -- varroa.tests.unit.api.v1.test_security_risks`
 - `tox -e pep8` — run all pre-commit hooks (ruff, ruff-format, hacking/flake8, doc8, typos)
 - `tox -e cover` — coverage report; **fails under 90%** coverage
 - `tox -e genconfig` — regenerate sample config from `etc/varroa/config-generator.conf`
