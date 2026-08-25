@@ -1,0 +1,65 @@
+<p>Dear Nectar Research Cloud user,</p>
+</br>
+
+<p>
+  A security risk has been detected on a resource in your project.
+</p>
+</br>
+
+<table border="1" cellpadding="6" cellspacing="0" style="border-collapse: collapse;">
+  {% if security_risk.type.description %}
+  <tr>
+    <th align="left">Description</th>
+    <td>{{ security_risk.type.description }}</td>
+  </tr>
+  {% endif %}
+  {% if security_risk.resource_type %}
+  <tr>
+    <th align="left">Resource type</th>
+    <td>{{ security_risk.resource_type }}</td>
+  </tr>
+  {% endif %}
+  {% if security_risk.resource_id %}
+  <tr>
+    <th align="left">Resource ID</th>
+    <td>{{ security_risk.resource_id }}</td>
+  </tr>
+  {% endif %}
+  {% if security_risk.ipaddress %}
+  <tr>
+    <th align="left">IP address</th>
+    <td>{{ security_risk.ipaddress }}</td>
+  </tr>
+  {% endif %}
+  {% if security_risk.port %}
+  <tr>
+    <th align="left">Port</th>
+    <td>{{ security_risk.port }}</td>
+  </tr>
+  {% endif %}
+  <tr>
+    <th align="left">Detected at</th>
+    <td>{{ security_risk.time }} UTC</td>
+  </tr>
+</table>
+</br>
+
+{% if security_risk.type.help_url %}
+<p>
+  For more information about this risk and how to remediate it, please see
+  <a href="{{ security_risk.type.help_url }}">{{ security_risk.type.help_url }}</a>.
+</p>
+</br>
+{% endif %}
+
+<p>
+  Please investigate and remediate this risk as soon as possible. If you
+  need assistance, reply to this email or contact Nectar support at
+  support@nectar.org.au.
+</p>
+</br>
+
+<p>
+  Kind Regards,<br/>
+  ARDC Nectar Research Cloud Team.
+</p>

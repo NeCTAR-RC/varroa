@@ -108,6 +108,27 @@ class TestAdminSecurityRisksAPI(base.ApiTestCase):
         self.assertEqual(sr_type.id, created_risk['type']['id'])
         self.assertEqual(data['expires'], created_risk['expires'])
         self.assertEqual(models.SecurityRisk.NEW, created_risk['status'])
+        # Notification is opt-in, so an omitted notify defaults to false.
+        self.assertFalse(created_risk['notify'])
+        stored = models.SecurityRisk.query.get(created_risk['id'])
+        self.assertFalse(stored.notify)
+
+    def test_security_risk_create_with_notify(self):
+        sr_type = self.create_security_risk_type()
+        data = {
+            "ipaddress": "203.0.113.4",
+            "time": "2024-02-29T12:00:00+00:00",
+            "type_id": sr_type.id,
+            'expires': '2024-03-01T12:00:00+00:00',
+            'notify': True,
+        }
+        response = self.client.post("/v1/security-risks/", json=data)
+
+        self.assertStatus(response, 201)
+        created_risk = response.get_json()
+        self.assertTrue(created_risk['notify'])
+        stored = models.SecurityRisk.query.get(created_risk['id'])
+        self.assertTrue(stored.notify)
 
     def test_security_risk_create_normalises_timezone(self):
         sr_type = self.create_security_risk_type()

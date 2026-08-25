@@ -179,6 +179,116 @@ class TestManager(base.TestCase):
         self.assertIsNone(models.SecurityRisk.query.get(security_risk.id))
 
     @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_notify(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # A notify-flagged risk that gets attributed to a project sends
+        # a notification once processing has been committed.
+        manager = worker_manager.Manager()
+        manager._notifier = mock.Mock()
+        security_risk = self.create_security_risk(notify=True)
+        self.create_ip_usage()
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.status, models.SecurityRisk.PROCESSED)
+        manager._notifier.send.assert_called_once()
+        notified_risk = manager._notifier.send.call_args.args[0]
+        self.assertEqual(security_risk.id, notified_risk.id)
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_no_notify_by_default(
+        self, mock_get_openstack, mock_create_app
+    ):
+        manager = worker_manager.Manager()
+        manager._notifier = mock.Mock()
+        security_risk = self.create_security_risk()
+        self.create_ip_usage()
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.status, models.SecurityRisk.PROCESSED)
+        manager._notifier.send.assert_not_called()
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_notify_dupe_suppressed(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # The project already knows about this exposure via the existing
+        # risk, so a re-reported duplicate must not notify again.
+        manager = worker_manager.Manager()
+        manager._notifier = mock.Mock()
+        security_risk = self.create_security_risk(notify=True)
+        ip_usage = self.create_ip_usage()
+
+        esr = self.create_security_risk(
+            time=datetime.datetime(2019, 1, 1),
+            expires=datetime.datetime(2019, 2, 1),
+        )
+        esr.resource_id = ip_usage.resource_id
+        esr.project_id = ip_usage.project_id
+        esr.type_id = security_risk.type_id
+        esr.status = models.SecurityRisk.PROCESSED
+        db.session.add(esr)
+        db.session.commit()
+
+        manager.process_security_risk(security_risk.id)
+
+        self.assertIsNone(models.SecurityRisk.query.get(security_risk.id))
+        manager._notifier.send.assert_not_called()
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_notify_unmatched_skipped(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # Without a matched project there is no one to notify.
+        manager = worker_manager.Manager()
+        manager._notifier = mock.Mock()
+        security_risk = self.create_security_risk(notify=True)
+        mock_get_openstack.return_value.list_ports.return_value = []
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.status, models.SecurityRisk.PROCESSED)
+        self.assertIsNone(updated_sr.project_id)
+        manager._notifier.send.assert_not_called()
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_notify_failure_stays_processed(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # A taynac failure is logged; the risk is already committed as
+        # PROCESSED and must stay that way.
+        manager = worker_manager.Manager()
+        manager._notifier = mock.Mock()
+        manager._notifier.send.side_effect = Exception("taynac unavailable")
+        security_risk = self.create_security_risk(notify=True)
+        self.create_ip_usage()
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.status, models.SecurityRisk.PROCESSED)
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_notify_resource_first(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # Resource-first risks arrive fully attributed and notify too.
+        manager = worker_manager.Manager()
+        manager._notifier = mock.Mock()
+        security_risk = self.create_resource_security_risk(notify=True)
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.status, models.SecurityRisk.PROCESSED)
+        manager._notifier.send.assert_called_once()
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
     def test_process_security_risk_transient_error_leaves_new(
         self, mock_get_openstack, mock_create_app
     ):

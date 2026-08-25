@@ -52,6 +52,15 @@ Once varroa has attempted to link the IP to a resource it will change the status
 security risk to PROCESSED. If project_id/resource_id is null and status = PROCESSED it
 means varroa couldn't find a matching resource.
 
+#### Notifications
+
+A security risk can be created with `notify = true` (off by default). Once such a risk
+has been linked to a resource, varroa sends a message to the owning project via
+[taynac](https://github.com/NeCTAR-RC/taynac), which resolves the project's tenant
+managers and members as the recipients. Duplicate risks (same type on the same resource)
+and risks that match no resource do not notify. The driver is selected with the
+`[worker] notifier` option (`taynac` or `logging` for development).
+
 ## Installation
 You can install varroa using helm onto a k8s cluster
 see https://github.com/NeCTAR-RC/varroa-helm

@@ -100,6 +100,7 @@ class SecurityRisk(db.Model):
     project_id = db.Column(db.String(64), nullable=True)
     resource_id = db.Column(db.String(64), nullable=True)
     resource_type = db.Column(db.String(64), nullable=True)
+    notify = db.Column(db.Boolean(), nullable=False, default=False)
 
     def __init__(
         self,
@@ -111,6 +112,7 @@ class SecurityRisk(db.Model):
         project_id=None,
         resource_id=None,
         resource_type=None,
+        notify=False,
     ):
         self.id = uuidutils.generate_uuid()
         self.status = self.NEW
@@ -127,3 +129,4 @@ class SecurityRisk(db.Model):
         self.project_id = project_id
         self.resource_id = resource_id
         self.resource_type = resource_type
+        self.notify = notify

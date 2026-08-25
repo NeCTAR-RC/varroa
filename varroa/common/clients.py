@@ -12,7 +12,12 @@
 #    under the License.
 
 from openstack import connection as sdkconnection
+from taynacclient import client as taynac_client
 
 
 def get_openstack(sesh):
     return sdkconnection.Connection(session=sesh)
+
+
+def get_taynacclient(sesh):
+    return taynac_client.Client("1", session=sesh)

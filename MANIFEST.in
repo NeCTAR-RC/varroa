@@ -1,3 +1,4 @@
 include requirements.txt
-graft verroa/migrations
+graft varroa/migrations
+graft varroa/templates
 global-exclude *.pyc

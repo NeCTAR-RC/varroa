@@ -24,6 +24,7 @@ from varroa.common import clients
 from varroa.common import keystone
 from varroa.extensions import db
 from varroa import models
+from varroa.worker import notifier
 
 
 CONF = cfg.CONF
@@ -47,6 +48,7 @@ class Manager:
     def __init__(self):
         self.app = app.create_app(init_config=False)
         self._openstack = None
+        self._notifier = None
 
     def _get_openstack(self):
         # Build the keystone session and SDK connection once and reuse them;
@@ -56,6 +58,11 @@ class Manager:
             k_session = keystone.KeystoneSession().get_session()
             self._openstack = clients.get_openstack(k_session)
         return self._openstack
+
+    def _get_notifier(self):
+        if self._notifier is None:
+            self._notifier = notifier.get_notifier()
+        return self._notifier
 
     @app_context
     def process_security_risk(self, security_risk_id):
@@ -89,6 +96,10 @@ class Manager:
                 security_risk_id,
             )
             return
+        # Only a risk making the NEW -> PROCESSED transition may notify; a
+        # redelivered cast re-processing an already PROCESSED risk must not
+        # message the project again.
+        was_new = security_risk.status == models.SecurityRisk.NEW
         security_risk.status = models.SecurityRisk.PROCESSED
 
         # Resource-first risks arrive fully attributed; only IP-reported
@@ -145,11 +156,19 @@ class Manager:
             .filter_by(status=models.SecurityRisk.PROCESSED)
             .first()
         )
+        notify = False
         if dupe_security_risk:
             LOG.info(
                 "Found duplicate security risk, updating %s",
                 dupe_security_risk.id,
             )
+            if security_risk.notify:
+                # The project already knows about this exposure; a scanner
+                # re-reporting it every run must not spam the owners.
+                LOG.info(
+                    "Suppressing notification for duplicate security risk %s",
+                    security_risk.id,
+                )
             dupe_security_risk.time = security_risk.time
             dupe_security_risk.last_seen = security_risk.time
             dupe_security_risk.expires = security_risk.expires
@@ -157,8 +176,31 @@ class Manager:
             db.session.delete(security_risk)
         else:
             db.session.add(security_risk)
+            notify = was_new and security_risk.notify
 
         db.session.commit()
+
+        if notify:
+            self._notify(security_risk)
+
+    def _notify(self, security_risk):
+        if security_risk.project_id is None:
+            LOG.warning(
+                "Security risk %s matched no resource, not sending "
+                "notification",
+                security_risk.id,
+            )
+            return
+        try:
+            self._get_notifier().send(security_risk)
+        except Exception:
+            # The risk is already committed as PROCESSED; a taynac failure
+            # must be logged rather than roll the processing back (which
+            # would wrongly report the risk as retryable).
+            LOG.exception(
+                "Failed to send notification for security risk %s",
+                security_risk.id,
+            )
 
     def _find_and_create_ip_usage(self, security_risk):
         ipaddress = security_risk.ipaddress

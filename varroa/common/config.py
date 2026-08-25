@@ -53,6 +53,17 @@ worker_opts = [
     cfg.IntOpt("workers", default=1),
     cfg.IntOpt("periodic_task_interval", default=1800),
     cfg.IntOpt("reconcile_interval", default=86400),
+    cfg.StrOpt(
+        "notifier",
+        default="taynac",
+        choices=["taynac", "logging"],
+        help="Driver used to notify a project about its security risks.",
+    ),
+    cfg.StrOpt(
+        "notification_subject",
+        default="Security risk detected on your Nectar project resources",
+        help="Subject line for security risk notifications.",
+    ),
 ]
 
 sentry_opts = [

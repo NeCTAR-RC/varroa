@@ -111,6 +111,7 @@ class TestCase(flask_testing.TestCase):
         time=datetime.datetime(2020, 2, 3),
         expires=datetime.datetime(2020, 3, 3),
         project_id=None,
+        notify=False,
     ):
         sr_type = self.create_security_risk_type()
 
@@ -119,6 +120,7 @@ class TestCase(flask_testing.TestCase):
             time=time,
             type_id=sr_type.id,
             expires=expires,
+            notify=notify,
         )
         sr.project_id = project_id
         db.session.add(sr)
@@ -132,6 +134,7 @@ class TestCase(flask_testing.TestCase):
         project_id=PROJECT_ID,
         resource_id=RESOURCE_ID,
         resource_type='cluster',
+        notify=False,
     ):
         sr_type = self.create_security_risk_type()
 
@@ -142,6 +145,7 @@ class TestCase(flask_testing.TestCase):
             project_id=project_id,
             resource_id=resource_id,
             resource_type=resource_type,
+            notify=notify,
         )
         db.session.add(sr)
         db.session.commit()
