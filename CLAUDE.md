@@ -84,8 +84,11 @@ When `auth_strategy=keystone`, the WSGI stack wraps the app with `SkippingAuthPr
 (keystonemiddleware, bypassed for `/` and `/healthcheck`) and `KeystoneContext`, which stores an
 oslo `RequestContext` under the `oslo_context` environ key. Authorisation is per-action via
 `Resource.authorize(rule)`, which formats `POLICY_PREFIX % rule` and enforces it with oslo.policy.
-Rules live in `varroa/common/policies.py` (`security_admin`, `owner`, `reader_or_owner`); policy is
-loaded from `/etc/varroa/policy.yaml`. Scope enforcement is on (`enforce_scope`).
+Rules live in `varroa/common/policies.py` (`security_admin`, `system_reader`, `owner`,
+`reader_or_owner`); policy is loaded from `/etc/varroa/policy.yaml`. Scope enforcement is on
+(`enforce_scope`); rules accept both system- and project-scoped tokens (system admin is full
+access, system reader is read-only across all projects, and the list endpoints gate system
+tokens on `list:all` because a system token has no project of its own).
 
 ### Async-context pattern
 

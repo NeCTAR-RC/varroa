@@ -45,7 +45,7 @@ class SecurityRiskList(base.Resource):
     def get(self, **kwargs):
         try:
             self.authorize('list')
-        except policy.PolicyNotAuthorized:
+        except (policy.PolicyNotAuthorized, policy.InvalidScope):
             flask_restful.abort(403, message="Not authorised")
 
         parser = reqparse.RequestParser()
@@ -58,11 +58,21 @@ class SecurityRiskList(base.Resource):
         parser.add_argument('resource_id', type=str, location='args')
         parser.add_argument('resource_type', type=str, location='args')
         args = parser.parse_args()
-        query = self._get_security_risks(self.context.project_id)
-        if self.authorize('list:all', do_raise=False):
-            project_id = args.get('project_id')
-            if args.get('all_projects') or project_id:
-                query = self._get_security_risks(project_id)
+
+        if self.context.system_scope:
+            # A system-scoped token has no project of its own, so
+            # listing spans all projects and is gated by list:all.
+            try:
+                self.authorize('list:all')
+            except (policy.PolicyNotAuthorized, policy.InvalidScope):
+                flask_restful.abort(403, message="Not authorised")
+            query = self._get_security_risks(args.get('project_id'))
+        else:
+            query = self._get_security_risks(self.context.project_id)
+            if self.authorize('list:all', do_raise=False):
+                project_id = args.get('project_id')
+                if args.get('all_projects') or project_id:
+                    query = self._get_security_risks(project_id)
 
         if args.get('type_id'):
             query = query.filter_by(type_id=args.get('type_id'))
@@ -76,7 +86,7 @@ class SecurityRiskList(base.Resource):
     def post(self, **kwargs):
         try:
             self.authorize('create')
-        except policy.PolicyNotAuthorized:
+        except (policy.PolicyNotAuthorized, policy.InvalidScope):
             flask_restful.abort(403, message="Not authorised")
 
         data = request.get_json()
@@ -129,7 +139,7 @@ class SecurityRisk(base.Resource):
         target = {'project_id': security_risk.project_id}
         try:
             self.authorize('get', target)
-        except policy.PolicyNotAuthorized:
+        except (policy.PolicyNotAuthorized, policy.InvalidScope):
             flask_restful.abort(
                 404, message=f"SecurityRisk {id} doesn't exist"
             )
@@ -142,7 +152,7 @@ class SecurityRisk(base.Resource):
         target = {'project_id': security_risk.project_id}
         try:
             self.authorize('delete', target)
-        except policy.PolicyNotAuthorized:
+        except (policy.PolicyNotAuthorized, policy.InvalidScope):
             flask_restful.abort(
                 404, message=f"SecurityRisk {id} doesn't exist"
             )

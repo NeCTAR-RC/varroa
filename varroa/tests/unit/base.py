@@ -27,9 +27,12 @@ from varroa import models
 
 
 PROJECT_ID = "ksprojectid1"
+PROJECT_ID_2 = "ksprojectid2"
 USER_ID = "ksuserid1"
+DOMAIN_ID = "ksdomainid1"
 
 PORT_ID = uuidutils.generate_uuid()
+PORT_ID_2 = uuidutils.generate_uuid()
 RESOURCE_ID = uuidutils.generate_uuid()
 START = datetime.datetime(2020, 2, 2)
 
@@ -146,10 +149,11 @@ class TestCase(flask_testing.TestCase):
 
 
 class TestKeystoneWrapper:
-    def __init__(self, app, roles, system_scope=False):
+    def __init__(self, app, roles, system_scope=False, domain_scope=False):
         self.app = app
         self.roles = roles
         self.system_scope = system_scope
+        self.domain_scope = domain_scope
 
     def __call__(self, environ, start_response):
         context_args = {
@@ -158,6 +162,8 @@ class TestKeystoneWrapper:
         }
         if self.system_scope:
             context_args['system_scope'] = 'all'
+        elif self.domain_scope:
+            context_args['domain_id'] = DOMAIN_ID
         else:
             context_args['project_id'] = PROJECT_ID
 
@@ -170,6 +176,7 @@ class TestKeystoneWrapper:
 class ApiTestCase(TestCase):
     ROLES = ["member"]
     SYSTEM_SCOPE = False
+    DOMAIN_SCOPE = False
 
     def setUp(self):
         super().setUp()
@@ -177,5 +184,5 @@ class ApiTestCase(TestCase):
 
     def init_context(self):
         self.app.wsgi_app = TestKeystoneWrapper(
-            self.app.wsgi_app, self.ROLES, self.SYSTEM_SCOPE
+            self.app.wsgi_app, self.ROLES, self.SYSTEM_SCOPE, self.DOMAIN_SCOPE
         )

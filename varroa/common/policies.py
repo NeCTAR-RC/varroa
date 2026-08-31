@@ -21,10 +21,16 @@ base_rules = [
         name="admin_required", check_str="role:admin or is_admin:1"
     ),
     policy.RuleDefault(name="security_admin", check_str="rule:admin_required"),
+    policy.RuleDefault(
+        name="system_reader", check_str="role:reader and system_scope:all"
+    ),
     policy.RuleDefault(name="owner", check_str="project_id:%(project_id)s"),
     policy.RuleDefault(
         name=READER_OR_OWNER,
-        check_str="rule:security_admin or (role:reader and rule:owner)",
+        check_str=(
+            "rule:security_admin or rule:system_reader"
+            " or (role:reader and rule:owner)"
+        ),
     ),
 ]
 
@@ -34,7 +40,7 @@ ip_usage_rules = [
     policy.DocumentedRuleDefault(
         name=IP_USAGE_PREFIX % "list",
         check_str="",
-        scope_types=["project"],
+        scope_types=["system", "project"],
         description="List ip usage.",
         operations=[
             {"path": "/v1/ip-usage/", "method": "GET"},
@@ -43,8 +49,8 @@ ip_usage_rules = [
     ),
     policy.DocumentedRuleDefault(
         name=IP_USAGE_PREFIX % "list:all",
-        check_str="rule:security_admin",
-        scope_types=["project"],
+        check_str="rule:security_admin or rule:system_reader",
+        scope_types=["system", "project"],
         description="List all ip usage.",
         operations=[{"path": "/v1/ip-usage/", "method": "GET"}],
     ),
@@ -56,7 +62,7 @@ security_risk_type_rules = [
     policy.DocumentedRuleDefault(
         name=SECURITY_RISK_TYPE_PREFIX % 'get',
         check_str='',
-        scope_types=['project'],
+        scope_types=['system', 'project'],
         description='Show security risk type details.',
         operations=[
             {
@@ -72,7 +78,7 @@ security_risk_type_rules = [
     policy.DocumentedRuleDefault(
         name=SECURITY_RISK_TYPE_PREFIX % 'list',
         check_str='',
-        scope_types=['project'],
+        scope_types=['system', 'project'],
         description='List security risk types.',
         operations=[
             {'path': '/v1/security-risk-types/', 'method': 'GET'},
@@ -82,14 +88,14 @@ security_risk_type_rules = [
     policy.DocumentedRuleDefault(
         name=SECURITY_RISK_TYPE_PREFIX % 'create',
         check_str='rule:security_admin',
-        scope_types=['project'],
+        scope_types=['system', 'project'],
         description='Create security risk type.',
         operations=[{'path': '/v1/security-risk-types/', 'method': 'POST'}],
     ),
     policy.DocumentedRuleDefault(
         name=SECURITY_RISK_TYPE_PREFIX % 'update',
         check_str='rule:security_admin',
-        scope_types=['project'],
+        scope_types=['system', 'project'],
         description='Update a security risk type',
         operations=[
             {
@@ -101,7 +107,7 @@ security_risk_type_rules = [
     policy.DocumentedRuleDefault(
         name=SECURITY_RISK_TYPE_PREFIX % 'delete',
         check_str='rule:security_admin',
-        scope_types=['project'],
+        scope_types=['system', 'project'],
         description='Delete security risk type.',
         operations=[
             {
@@ -118,7 +124,7 @@ security_risk_rules = [
     policy.DocumentedRuleDefault(
         name=SECURITY_RISK_PREFIX % 'get',
         check_str=f'rule:{READER_OR_OWNER}',
-        scope_types=['project'],
+        scope_types=['system', 'project'],
         description='Show security risk details.',
         operations=[
             {
@@ -134,7 +140,7 @@ security_risk_rules = [
     policy.DocumentedRuleDefault(
         name=SECURITY_RISK_PREFIX % 'list',
         check_str='',
-        scope_types=['project'],
+        scope_types=['system', 'project'],
         description='List security risks.',
         operations=[
             {'path': '/v1/security-risks/', 'method': 'GET'},
@@ -143,15 +149,15 @@ security_risk_rules = [
     ),
     policy.DocumentedRuleDefault(
         name=SECURITY_RISK_PREFIX % 'list:all',
-        check_str='rule:security_admin',
-        scope_types=['project'],
+        check_str='rule:security_admin or rule:system_reader',
+        scope_types=['system', 'project'],
         description='List all security risks.',
         operations=[{'path': '/v1/security-risks/', 'method': 'GET'}],
     ),
     policy.DocumentedRuleDefault(
         name=SECURITY_RISK_PREFIX % 'delete',
         check_str='rule:security_admin',
-        scope_types=['project'],
+        scope_types=['system', 'project'],
         description='Delete security risk.',
         operations=[
             {
@@ -163,7 +169,7 @@ security_risk_rules = [
     policy.DocumentedRuleDefault(
         name=SECURITY_RISK_PREFIX % 'create',
         check_str='rule:security_admin',
-        scope_types=['project'],
+        scope_types=['system', 'project'],
         description='Create security risk.',
         operations=[{'path': '/v1/security-risks/', 'method': 'POST'}],
     ),

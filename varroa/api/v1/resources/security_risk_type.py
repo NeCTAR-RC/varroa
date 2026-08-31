@@ -41,7 +41,7 @@ class SecurityRiskTypeList(base.Resource):
     def get(self, **kwargs):
         try:
             self.authorize('list')
-        except policy.PolicyNotAuthorized:
+        except (policy.PolicyNotAuthorized, policy.InvalidScope):
             flask_restful.abort(403, message="Not authorised")
 
         parser = reqparse.RequestParser()
@@ -53,7 +53,7 @@ class SecurityRiskTypeList(base.Resource):
     def post(self, **kwargs):
         try:
             self.authorize('create')
-        except policy.PolicyNotAuthorized:
+        except (policy.PolicyNotAuthorized, policy.InvalidScope):
             flask_restful.abort(403, message="Not authorised")
 
         data = request.get_json()
@@ -91,7 +91,7 @@ class SecurityRiskType(base.Resource):
 
         try:
             self.authorize('get')
-        except policy.PolicyNotAuthorized:
+        except (policy.PolicyNotAuthorized, policy.InvalidScope):
             flask_restful.abort(403, message="Not authorised")
 
         return self.schema.dump(security_risk_type)
@@ -100,7 +100,7 @@ class SecurityRiskType(base.Resource):
         security_risk_type = self._get_security_risk_type(id)
         try:
             self.authorize('update')
-        except policy.PolicyNotAuthorized:
+        except (policy.PolicyNotAuthorized, policy.InvalidScope):
             flask_restful.abort(
                 404, message=f"SecurityRiskType {id} dosn't exist"
             )
@@ -126,7 +126,7 @@ class SecurityRiskType(base.Resource):
         security_risk_type = self._get_security_risk_type(id)
         try:
             self.authorize('delete')
-        except policy.PolicyNotAuthorized:
+        except (policy.PolicyNotAuthorized, policy.InvalidScope):
             flask_restful.abort(
                 404, message=f"SecurityRiskType {id} dosn't exist"
             )

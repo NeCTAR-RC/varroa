@@ -174,3 +174,91 @@ class TestAdminSecurityRiskTypesAPI(base.ApiTestCase):
         self.assertEqual(
             update_data['description'], persisted_data['description']
         )
+
+
+class TestSystemAdminSecurityRiskTypesAPI(base.ApiTestCase):
+    ROLES = ['admin']
+    SYSTEM_SCOPE = True
+
+    def test_security_risk_type_list(self):
+        self.create_security_risk_type()
+        response = self.client.get("/v1/security-risk-types/")
+
+        self.assert200(response)
+        results = response.get_json().get("results")
+        self.assertEqual(1, len(results))
+
+    def test_security_risk_type_create(self):
+        data = {
+            "name": "Test Risk Type",
+            "description": "This is a test security risk type",
+        }
+        response = self.client.post("/v1/security-risk-types/", json=data)
+
+        self.assertStatus(response, 201)
+
+    def test_security_risk_type_update(self):
+        risk_type = self.create_security_risk_type()
+        response = self.client.patch(
+            f"/v1/security-risk-types/{risk_type.id}/",
+            json={"name": "new-name"},
+        )
+
+        self.assert200(response)
+        self.assertEqual("new-name", response.get_json()['name'])
+
+    def test_security_risk_type_delete(self):
+        risk_type = self.create_security_risk_type()
+        response = self.client.delete(
+            f"/v1/security-risk-types/{risk_type.id}/"
+        )
+
+        self.assertStatus(response, 204)
+
+
+class TestSystemMemberSecurityRiskTypesAPI(base.ApiTestCase):
+    ROLES = ['member']
+    SYSTEM_SCOPE = True
+
+    def test_security_risk_type_list(self):
+        # Risk types are global reference data, readable by any
+        # authenticated token.
+        self.create_security_risk_type()
+        response = self.client.get("/v1/security-risk-types/")
+
+        self.assert200(response)
+        results = response.get_json().get("results")
+        self.assertEqual(1, len(results))
+
+    def test_security_risk_type_detail(self):
+        risk_type = self.create_security_risk_type()
+        response = self.client.get(f"/v1/security-risk-types/{risk_type.id}/")
+
+        self.assert200(response)
+        self.assertEqual(risk_type.id, response.get_json()['id'])
+
+    def test_security_risk_type_create(self):
+        data = {
+            "name": "Test Risk Type",
+            "description": "This is a test security risk type",
+        }
+        response = self.client.post("/v1/security-risk-types/", json=data)
+
+        self.assert403(response)
+
+    def test_security_risk_type_update_forbidden(self):
+        risk_type = self.create_security_risk_type()
+        response = self.client.patch(
+            f"/v1/security-risk-types/{risk_type.id}/",
+            json={"name": "new-name"},
+        )
+
+        self.assert404(response)
+
+    def test_security_risk_type_delete_forbidden(self):
+        risk_type = self.create_security_risk_type()
+        response = self.client.delete(
+            f"/v1/security-risk-types/{risk_type.id}/"
+        )
+
+        self.assert404(response)

@@ -237,3 +237,160 @@ class TestAdminSecurityRisksAPI(base.ApiTestCase):
         # Verify the risk is deleted
         deleted_risk = models.SecurityRisk.query.get(risk.id)
         self.assertIsNone(deleted_risk)
+
+
+class TestSystemAdminSecurityRisksAPI(base.ApiTestCase):
+    ROLES = ['admin']
+    SYSTEM_SCOPE = True
+
+    def test_security_risks_list(self):
+        # A system token has no project of its own, so listing spans all
+        # projects without needing all_projects.
+        self.create_security_risk(
+            ipaddress='203.0.113.1', project_id=base.PROJECT_ID
+        )
+        self.create_security_risk(
+            ipaddress='203.0.113.2', project_id=base.PROJECT_ID_2
+        )
+        response = self.client.get("/v1/security-risks/")
+
+        self.assert200(response)
+        results = response.get_json().get("results")
+        self.assertEqual(2, len(results))
+
+    def test_security_risks_list_project_filter(self):
+        self.create_security_risk(
+            ipaddress='203.0.113.1', project_id=base.PROJECT_ID
+        )
+        self.create_security_risk(
+            ipaddress='203.0.113.2', project_id=base.PROJECT_ID_2
+        )
+        response = self.client.get(
+            f"/v1/security-risks/?project_id={base.PROJECT_ID_2}"
+        )
+
+        self.assert200(response)
+        results = response.get_json().get("results")
+        self.assertEqual(1, len(results))
+        self.assertEqual(base.PROJECT_ID_2, results[0]['project_id'])
+
+    def test_security_risk_detail(self):
+        risk = self.create_security_risk(project_id=base.PROJECT_ID)
+        response = self.client.get(f"/v1/security-risks/{risk.id}/")
+
+        self.assert200(response)
+        data = response.get_json()
+        self.assertEqual(risk.id, data['id'])
+
+    def test_security_risk_create(self):
+        sr_type = self.create_security_risk_type()
+        data = {
+            "ipaddress": "203.0.113.4",
+            "time": "2024-02-29T12:00:00+00:00",
+            "type_id": sr_type.id,
+            'expires': '2024-03-01T12:00:00+00:00',
+        }
+        response = self.client.post("/v1/security-risks/", json=data)
+
+        self.assertStatus(response, 201)
+
+    def test_security_risk_delete(self):
+        risk = self.create_security_risk(project_id=base.PROJECT_ID)
+        response = self.client.delete(f"/v1/security-risks/{risk.id}/")
+
+        self.assertStatus(response, 204)
+        self.assertIsNone(models.SecurityRisk.query.get(risk.id))
+
+
+class TestSystemReaderSecurityRisksAPI(base.ApiTestCase):
+    ROLES = ['reader']
+    SYSTEM_SCOPE = True
+
+    def test_security_risks_list(self):
+        self.create_security_risk(
+            ipaddress='203.0.113.1', project_id=base.PROJECT_ID
+        )
+        self.create_security_risk(
+            ipaddress='203.0.113.2', project_id=base.PROJECT_ID_2
+        )
+        response = self.client.get("/v1/security-risks/")
+
+        self.assert200(response)
+        results = response.get_json().get("results")
+        self.assertEqual(2, len(results))
+
+    def test_security_risk_detail(self):
+        risk = self.create_security_risk(project_id=base.PROJECT_ID)
+        response = self.client.get(f"/v1/security-risks/{risk.id}/")
+
+        self.assert200(response)
+        data = response.get_json()
+        self.assertEqual(risk.id, data['id'])
+
+    def test_security_risk_create(self):
+        sr_type = self.create_security_risk_type()
+        data = {
+            "ipaddress": "203.0.113.4",
+            "time": "2024-02-29T12:00:00+00:00",
+            "type_id": sr_type.id,
+            'expires': '2024-03-01T12:00:00+00:00',
+        }
+        response = self.client.post("/v1/security-risks/", json=data)
+
+        self.assert403(response)
+
+    def test_security_risk_delete(self):
+        risk = self.create_security_risk(project_id=base.PROJECT_ID)
+        response = self.client.delete(f"/v1/security-risks/{risk.id}/")
+
+        self.assert404(response)
+        self.assertIsNotNone(models.SecurityRisk.query.get(risk.id))
+
+
+class TestSystemMemberSecurityRisksAPI(base.ApiTestCase):
+    ROLES = ['member']
+    SYSTEM_SCOPE = True
+
+    def test_security_risks_list(self):
+        # A system token without reader or admin must not see any
+        # project's data.
+        self.create_security_risk(project_id=base.PROJECT_ID)
+        response = self.client.get("/v1/security-risks/")
+
+        self.assert403(response)
+
+    def test_security_risk_detail(self):
+        risk = self.create_security_risk(project_id=base.PROJECT_ID)
+        response = self.client.get(f"/v1/security-risks/{risk.id}/")
+
+        self.assert404(response)
+
+    def test_security_risk_create(self):
+        sr_type = self.create_security_risk_type()
+        data = {
+            "ipaddress": "203.0.113.4",
+            "time": "2024-02-29T12:00:00+00:00",
+            "type_id": sr_type.id,
+            'expires': '2024-03-01T12:00:00+00:00',
+        }
+        response = self.client.post("/v1/security-risks/", json=data)
+
+        self.assert403(response)
+
+
+class TestDomainScopedSecurityRisksAPI(base.ApiTestCase):
+    ROLES = ['admin']
+    DOMAIN_SCOPE = True
+
+    def test_security_risks_list(self):
+        # Regression: out-of-scope tokens used to raise an uncaught
+        # InvalidScope and return HTTP 500.
+        response = self.client.get("/v1/security-risks/")
+
+        self.assert403(response)
+
+    def test_security_risk_detail(self):
+        risk = self.create_security_risk(project_id=base.PROJECT_ID)
+        response = self.client.get(f"/v1/security-risks/{risk.id}/")
+
+        self.assert404(response)

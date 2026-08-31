@@ -41,7 +41,7 @@ class IPUsageList(base.Resource):
     def get(self, **kwargs):
         try:
             self.authorize("list")
-        except policy.PolicyNotAuthorized:
+        except (policy.PolicyNotAuthorized, policy.InvalidScope):
             flask_restful.abort(403, message="Not authorised")
 
         parser = reqparse.RequestParser()
@@ -52,11 +52,21 @@ class IPUsageList(base.Resource):
         parser.add_argument("project_id", type=str, location="args")
         parser.add_argument("ip", type=str, location="args")
         args = parser.parse_args()
-        query = self._get_ip_usage(self.context.project_id)
-        if self.authorize("list:all", do_raise=False):
-            project_id = args.get("project_id")
-            if args.get("all_projects") or project_id:
-                query = self._get_ip_usage(project_id)
+
+        if self.context.system_scope:
+            # A system-scoped token has no project of its own, so
+            # listing spans all projects and is gated by list:all.
+            try:
+                self.authorize("list:all")
+            except (policy.PolicyNotAuthorized, policy.InvalidScope):
+                flask_restful.abort(403, message="Not authorised")
+            query = self._get_ip_usage(args.get("project_id"))
+        else:
+            query = self._get_ip_usage(self.context.project_id)
+            if self.authorize("list:all", do_raise=False):
+                project_id = args.get("project_id")
+                if args.get("all_projects") or project_id:
+                    query = self._get_ip_usage(project_id)
 
         if args.get("ip"):
             query = query.filter_by(ip=args.get("ip"))
