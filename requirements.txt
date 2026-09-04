@@ -19,4 +19,4 @@ pymysql
 python-memcached
 prometheus_client
 sentry-sdk
-nectar-health-probe>=1.0.0
+nectar-health-probe>=1.0.2
