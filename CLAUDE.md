@@ -59,8 +59,10 @@ Both `varroa-worker` and `varroa-notification` run their consumers as **cotyledo
    `SecurityRisk` in state `NEW` and casts a `process_security_risk` RPC message to the
    `varroa-worker` topic. The worker matches the risk's IP+time against `IPUsage` (and falls back to
    querying neutron directly via `_find_and_create_ip_usage`), fills in `project_id`/`resource_id`/
-   `resource_type`, dedupes against existing risks of the same type on the same resource, and marks
-   the risk `PROCESSED`. The periodic task `clean_expired_risks` deletes risks past their `expires`.
+   `resource_type`, remaps an instance in the trove service project (`[worker] trove_project_id`)
+   to the trove database named in the instance's metadata (`_remap_trove_instance`), dedupes
+   against existing risks of the same type on the same resource, and marks the risk `PROCESSED`.
+   The periodic task `clean_expired_risks` deletes risks past their `expires`.
 
 ### Layers
 

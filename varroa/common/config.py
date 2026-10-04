@@ -64,6 +64,15 @@ worker_opts = [
         default="Security risk detected on your Nectar project resources",
         help="Subject line for security risk notifications.",
     ),
+    cfg.StrOpt(
+        "trove_project_id",
+        help="ID of the project that owns the nova instances trove builds "
+        "databases on. A security risk matched to an instance in this "
+        "project is lodged against the trove database instance named in "
+        "the instance's trove_project_id and trove_instance_id metadata "
+        "instead. Instances without that metadata keep the risk. Unset "
+        "disables the remapping.",
+    ),
 ]
 
 sentry_opts = [

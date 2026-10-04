@@ -14,6 +14,7 @@
 import datetime
 import functools
 
+from openstack import exceptions as sdk_exc
 from oslo_config import cfg
 from oslo_log import log as logging
 from oslo_utils import timeutils
@@ -33,6 +34,12 @@ LOG = logging.getLogger(__name__)
 # Neutron 'id' filter is sent as repeated query params; cap the batch so the
 # request URL stays well under typical server limits.
 PORT_ID_QUERY_BATCH = 100
+
+# Trove builds each database on a nova instance in its own service project
+# and records the real owner in the instance metadata under these keys.
+TROVE_PROJECT_ID_METADATA = 'trove_project_id'
+TROVE_INSTANCE_ID_METADATA = 'trove_instance_id'
+TROVE_RESOURCE_TYPE = 'database'
 
 
 def app_context(f):
@@ -100,7 +107,6 @@ class Manager:
         # redelivered cast re-processing an already PROCESSED risk must not
         # message the project again.
         was_new = security_risk.status == models.SecurityRisk.NEW
-        security_risk.status = models.SecurityRisk.PROCESSED
 
         # Resource-first risks arrive fully attributed; only IP-reported
         # risks need matching against the IP usage history.
@@ -147,6 +153,16 @@ class Manager:
                     security_risk.ipaddress,
                     ip_usage.resource_id,
                 )
+
+        # Must run before the duplicate check so the risk is deduped against
+        # the resource it is finally recorded on.
+        self._remap_trove_instance(security_risk)
+
+        # Only mark the risk processed once attribution is complete. Creating
+        # a new IP usage commits part way through, which would also persist
+        # an earlier status change; a lookup failure after that point would
+        # then leave the risk PROCESSED but unattributed and never retried.
+        security_risk.status = models.SecurityRisk.PROCESSED
         dupe_security_risk = (
             db.session.query(models.SecurityRisk)
             .filter_by(resource_id=security_risk.resource_id)
@@ -201,6 +217,67 @@ class Manager:
                 "Failed to send notification for security risk %s",
                 security_risk.id,
             )
+
+    def _remap_trove_instance(self, security_risk):
+        """Lodge a risk on a trove-managed instance against the database.
+
+        Trove builds each database on a nova instance owned by the trove
+        service project, so an IP match attributes the risk to a project the
+        real owner cannot see. Trove tags those instances with the owning
+        project and database instance in the server metadata; when both are
+        present the risk is recorded against the database instead. Instances
+        in the trove project without that metadata keep the risk.
+        """
+        trove_project_id = CONF.worker.trove_project_id
+        if not trove_project_id:
+            return
+        if (
+            security_risk.resource_type != 'instance'
+            or security_risk.project_id != trove_project_id
+        ):
+            return
+
+        openstack = self._get_openstack()
+        try:
+            # The compute proxy fetches by ID regardless of project; the
+            # cloud-layer get_server only searches the service project.
+            server = openstack.compute.get_server(security_risk.resource_id)
+        except sdk_exc.NotFoundException:
+            # The instance has since been deleted, so there is no metadata
+            # to read; the risk stays on the instance. Any other error is
+            # deliberately NOT caught so the risk is retried rather than
+            # being recorded against the wrong project.
+            LOG.warning(
+                "Instance %s for security risk %s no longer exists, "
+                "leaving the risk on the instance",
+                security_risk.resource_id,
+                security_risk.id,
+            )
+            return
+
+        metadata = server.metadata or {}
+        project_id = metadata.get(TROVE_PROJECT_ID_METADATA)
+        instance_id = metadata.get(TROVE_INSTANCE_ID_METADATA)
+        if not project_id or not instance_id:
+            LOG.info(
+                "Instance %s in the trove project has no trove metadata, "
+                "leaving security risk %s on the instance",
+                security_risk.resource_id,
+                security_risk.id,
+            )
+            return
+
+        LOG.info(
+            "Remapping security risk %s from instance %s to trove database "
+            "%s in project %s",
+            security_risk.id,
+            security_risk.resource_id,
+            instance_id,
+            project_id,
+        )
+        security_risk.project_id = project_id
+        security_risk.resource_id = instance_id
+        security_risk.resource_type = TROVE_RESOURCE_TYPE
 
     def _find_and_create_ip_usage(self, security_risk):
         ipaddress = security_risk.ipaddress

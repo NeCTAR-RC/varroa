@@ -52,6 +52,17 @@ Once varroa has attempted to link the IP to a resource it will change the status
 security risk to PROCESSED. If project_id/resource_id is null and status = PROCESSED it
 means varroa couldn't find a matching resource.
 
+#### Trove database instances
+
+Trove builds each database on a nova instance owned by the trove service project, so an
+IP-reported risk would otherwise be attributed to that service project rather than to the
+user who owns the database. When `[worker] trove_project_id` is set, a risk matched to an
+instance in that project is lodged against the trove database instead: the worker reads the
+`trove_project_id` and `trove_instance_id` metadata that trove sets on the instance and
+records the risk with that project, that resource ID and resource type `database`. Instances
+in the trove project without that metadata keep the risk on the instance, as does an
+instance that has since been deleted.
+
 #### Notifications
 
 A security risk can be created with `notify = true` (off by default). Once such a risk

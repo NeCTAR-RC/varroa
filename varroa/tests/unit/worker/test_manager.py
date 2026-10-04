@@ -15,12 +15,23 @@ import datetime
 from unittest import mock
 
 from freezegun import freeze_time
+from openstack import exceptions as sdk_exc
+from oslo_config import cfg
 from oslo_utils import timeutils
 
 from varroa.extensions import db
 from varroa import models
 from varroa.tests.unit import base
 from varroa.worker import manager as worker_manager
+
+
+TROVE_PROJECT_ID = 'trove-service-project'
+TROVE_OWNER_PROJECT_ID = 'trove-owner-project'
+TROVE_INSTANCE_ID = 'trove-database-instance'
+TROVE_METADATA = {
+    'trove_project_id': TROVE_OWNER_PROJECT_ID,
+    'trove_instance_id': TROVE_INSTANCE_ID,
+}
 
 
 @mock.patch('varroa.app.create_app')
@@ -324,6 +335,276 @@ class TestManager(base.TestCase):
         manager = worker_manager.Manager()
         manager.process_security_risk('does-not-exist')
         mock_get_openstack.assert_not_called()
+
+    def _enable_trove(self):
+        cfg.CONF.set_override(
+            'trove_project_id', TROVE_PROJECT_ID, group='worker'
+        )
+
+    @staticmethod
+    def _mock_server(mock_get_openstack, metadata):
+        get_server = mock_get_openstack.return_value.compute.get_server
+        get_server.return_value = mock.Mock(metadata=metadata)
+        return get_server
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_trove_instance_remapped(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # A risk matched to a nova instance in the trove project is lodged
+        # against the trove database named in the instance metadata. The IP
+        # usage still records the nova port's real ownership.
+        self._enable_trove()
+        manager = worker_manager.Manager()
+        security_risk = self.create_security_risk()
+        ip_usage = self.create_ip_usage(project_id=TROVE_PROJECT_ID)
+        get_server = self._mock_server(mock_get_openstack, TROVE_METADATA)
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.status, models.SecurityRisk.PROCESSED)
+        self.assertEqual(updated_sr.project_id, TROVE_OWNER_PROJECT_ID)
+        self.assertEqual(updated_sr.resource_id, TROVE_INSTANCE_ID)
+        self.assertEqual(updated_sr.resource_type, 'database')
+        get_server.assert_called_once_with(base.RESOURCE_ID)
+        updated_iu = models.IPUsage.query.get(ip_usage.id)
+        self.assertEqual(updated_iu.project_id, TROVE_PROJECT_ID)
+        self.assertEqual(updated_iu.resource_id, base.RESOURCE_ID)
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_trove_instance_without_metadata(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # Some instances in the trove project carry no trove metadata; the
+        # risk stays on the instance.
+        self._enable_trove()
+        manager = worker_manager.Manager()
+        security_risk = self.create_security_risk()
+        self.create_ip_usage(project_id=TROVE_PROJECT_ID)
+        self._mock_server(mock_get_openstack, {})
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.status, models.SecurityRisk.PROCESSED)
+        self.assertEqual(updated_sr.project_id, TROVE_PROJECT_ID)
+        self.assertEqual(updated_sr.resource_id, base.RESOURCE_ID)
+        self.assertEqual(updated_sr.resource_type, 'instance')
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_trove_instance_partial_metadata(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # Both metadata keys are needed to remap; one alone is ignored.
+        self._enable_trove()
+        manager = worker_manager.Manager()
+        security_risk = self.create_security_risk()
+        self.create_ip_usage(project_id=TROVE_PROJECT_ID)
+        self._mock_server(
+            mock_get_openstack, {'trove_project_id': TROVE_OWNER_PROJECT_ID}
+        )
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.project_id, TROVE_PROJECT_ID)
+        self.assertEqual(updated_sr.resource_id, base.RESOURCE_ID)
+        self.assertEqual(updated_sr.resource_type, 'instance')
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_trove_instance_deleted(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # The instance has since been deleted so there is no metadata to
+        # read; the risk is still processed and stays on the instance.
+        self._enable_trove()
+        manager = worker_manager.Manager()
+        security_risk = self.create_security_risk()
+        self.create_ip_usage(project_id=TROVE_PROJECT_ID)
+        get_server = mock_get_openstack.return_value.compute.get_server
+        get_server.side_effect = sdk_exc.NotFoundException()
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.status, models.SecurityRisk.PROCESSED)
+        self.assertEqual(updated_sr.project_id, TROVE_PROJECT_ID)
+        self.assertEqual(updated_sr.resource_id, base.RESOURCE_ID)
+        self.assertEqual(updated_sr.resource_type, 'instance')
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_trove_lookup_error_leaves_new(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # A transient nova failure must not record the risk against the
+        # trove service project; it is rolled back and retried later.
+        self._enable_trove()
+        manager = worker_manager.Manager()
+        security_risk = self.create_security_risk()
+        self.create_ip_usage(project_id=TROVE_PROJECT_ID)
+        get_server = mock_get_openstack.return_value.compute.get_server
+        get_server.side_effect = Exception("nova unavailable")
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.status, models.SecurityRisk.NEW)
+        self.assertIsNone(updated_sr.project_id)
+        self.assertIsNone(updated_sr.resource_id)
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_trove_lookup_error_after_new_ip_usage(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # Creating the IP usage from neutron commits part way through
+        # processing. A nova failure after that must still leave the risk
+        # NEW (not PROCESSED and unattributed) while keeping the IP usage.
+        self._enable_trove()
+        manager = worker_manager.Manager()
+        security_risk = self.create_security_risk()
+        mock_port = mock.Mock(
+            id='fake-port-id',
+            project_id=TROVE_PROJECT_ID,
+            device_id='fake-device-id',
+            device_owner='compute:nova',
+            created_at='2020-01-01T00:00:00Z',
+        )
+        conn = mock_get_openstack.return_value
+        conn.list_ports.return_value = [mock_port]
+        conn.compute.get_server.side_effect = Exception("nova unavailable")
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.status, models.SecurityRisk.NEW)
+        self.assertIsNone(updated_sr.project_id)
+        self.assertEqual(1, models.IPUsage.query.count())
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_trove_not_configured(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # Without trove_project_id set nothing is remapped and nova is never
+        # queried, whatever project the instance is in.
+        manager = worker_manager.Manager()
+        security_risk = self.create_security_risk()
+        self.create_ip_usage(project_id=TROVE_PROJECT_ID)
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.project_id, TROVE_PROJECT_ID)
+        self.assertEqual(updated_sr.resource_type, 'instance')
+        mock_get_openstack.return_value.compute.get_server.assert_not_called()
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_trove_other_project(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # An instance in any other project is left alone without a lookup.
+        self._enable_trove()
+        manager = worker_manager.Manager()
+        security_risk = self.create_security_risk()
+        self.create_ip_usage()
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.project_id, base.PROJECT_ID)
+        self.assertEqual(updated_sr.resource_id, base.RESOURCE_ID)
+        mock_get_openstack.return_value.compute.get_server.assert_not_called()
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_trove_non_instance_resource(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # Only nova instances are remapped; another resource type in the
+        # trove project is left as reported.
+        self._enable_trove()
+        manager = worker_manager.Manager()
+        security_risk = self.create_resource_security_risk(
+            project_id=TROVE_PROJECT_ID, resource_type='cluster'
+        )
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.project_id, TROVE_PROJECT_ID)
+        self.assertEqual(updated_sr.resource_type, 'cluster')
+        mock_get_openstack.return_value.compute.get_server.assert_not_called()
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_trove_resource_first_remapped(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # A resource-first risk reported directly against an instance in
+        # the trove project is remapped the same way as an IP match.
+        self._enable_trove()
+        manager = worker_manager.Manager()
+        security_risk = self.create_resource_security_risk(
+            project_id=TROVE_PROJECT_ID, resource_type='instance'
+        )
+        self._mock_server(mock_get_openstack, TROVE_METADATA)
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_sr = models.SecurityRisk.query.get(security_risk.id)
+        self.assertEqual(updated_sr.status, models.SecurityRisk.PROCESSED)
+        self.assertEqual(updated_sr.project_id, TROVE_OWNER_PROJECT_ID)
+        self.assertEqual(updated_sr.resource_id, TROVE_INSTANCE_ID)
+        self.assertEqual(updated_sr.resource_type, 'database')
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_trove_dupe(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # Remapping happens before the duplicate check, so a re-reported
+        # risk is deduped against the existing risk on the trove database.
+        self._enable_trove()
+        manager = worker_manager.Manager()
+        security_risk = self.create_security_risk()
+        self.create_ip_usage(project_id=TROVE_PROJECT_ID)
+        self._mock_server(mock_get_openstack, TROVE_METADATA)
+
+        esr = self.create_resource_security_risk(
+            time=datetime.datetime(2019, 1, 1),
+            expires=datetime.datetime(2019, 2, 1),
+            project_id=TROVE_OWNER_PROJECT_ID,
+            resource_id=TROVE_INSTANCE_ID,
+            resource_type='database',
+        )
+        esr.status = models.SecurityRisk.PROCESSED
+        db.session.add(esr)
+        db.session.commit()
+
+        manager.process_security_risk(security_risk.id)
+
+        updated_esr = models.SecurityRisk.query.get(esr.id)
+        self.assertEqual(updated_esr.expires, security_risk.expires)
+        self.assertEqual(updated_esr.time, security_risk.time)
+        self.assertEqual(updated_esr.first_seen, datetime.datetime(2019, 1, 1))
+        self.assertIsNone(models.SecurityRisk.query.get(security_risk.id))
+
+    @mock.patch('varroa.worker.manager.clients.get_openstack')
+    def test_process_security_risk_trove_notify(
+        self, mock_get_openstack, mock_create_app
+    ):
+        # The notification goes to the database owner, not the trove
+        # service project.
+        self._enable_trove()
+        manager = worker_manager.Manager()
+        manager._notifier = mock.Mock()
+        security_risk = self.create_security_risk(notify=True)
+        self.create_ip_usage(project_id=TROVE_PROJECT_ID)
+        self._mock_server(mock_get_openstack, TROVE_METADATA)
+
+        manager.process_security_risk(security_risk.id)
+
+        manager._notifier.send.assert_called_once()
+        notified_risk = manager._notifier.send.call_args.args[0]
+        self.assertEqual(notified_risk.project_id, TROVE_OWNER_PROJECT_ID)
+        self.assertEqual(notified_risk.resource_id, TROVE_INSTANCE_ID)
 
     @mock.patch('varroa.worker.manager.clients.get_openstack')
     def test_process_security_risk_multiple_ip_usage(
