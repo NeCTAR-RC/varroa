@@ -36,11 +36,14 @@ class SecurityRiskList(base.Resource):
     POLICY_PREFIX = policies.SECURITY_RISK_PREFIX
     schema = schemas.security_risks
 
-    def _get_security_risks(self, project_id=None):
+    def _get_security_risks(self, project_id=None, all_projects=False):
         query = db.session.query(models.SecurityRisk)
-        if project_id:
-            query = query.filter_by(project_id=project_id)
-        return query
+        if all_projects:
+            return query
+        if not project_id:
+            # Never fall through to an unfiltered query by accident.
+            raise ValueError('project_id is required unless all_projects')
+        return query.filter_by(project_id=project_id)
 
     def get(self, **kwargs):
         try:
@@ -66,13 +69,23 @@ class SecurityRiskList(base.Resource):
                 self.authorize('list:all')
             except (policy.PolicyNotAuthorized, policy.InvalidScope):
                 flask_restful.abort(403, message="Not authorised")
-            query = self._get_security_risks(args.get('project_id'))
+            project_id = args.get('project_id')
+            query = self._get_security_risks(
+                project_id, all_projects=not project_id
+            )
         else:
+            # An unscoped token is treated as project-scoped by
+            # oslo.policy but has no project_id, so it must not list
+            # anything.
+            if self.context.project_id is None:
+                flask_restful.abort(403, message="Not authorised")
             query = self._get_security_risks(self.context.project_id)
             if self.authorize('list:all', do_raise=False):
                 project_id = args.get('project_id')
                 if args.get('all_projects') or project_id:
-                    query = self._get_security_risks(project_id)
+                    query = self._get_security_risks(
+                        project_id, all_projects=not project_id
+                    )
 
         if args.get('type_id'):
             query = query.filter_by(type_id=args.get('type_id'))

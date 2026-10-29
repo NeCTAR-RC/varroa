@@ -153,11 +153,19 @@ class TestCase(flask_testing.TestCase):
 
 
 class TestKeystoneWrapper:
-    def __init__(self, app, roles, system_scope=False, domain_scope=False):
+    def __init__(
+        self,
+        app,
+        roles,
+        system_scope=False,
+        domain_scope=False,
+        unscoped=False,
+    ):
         self.app = app
         self.roles = roles
         self.system_scope = system_scope
         self.domain_scope = domain_scope
+        self.unscoped = unscoped
 
     def __call__(self, environ, start_response):
         context_args = {
@@ -168,6 +176,9 @@ class TestKeystoneWrapper:
             context_args['system_scope'] = 'all'
         elif self.domain_scope:
             context_args['domain_id'] = DOMAIN_ID
+        elif self.unscoped:
+            # An unscoped token has no project, system or domain scope.
+            pass
         else:
             context_args['project_id'] = PROJECT_ID
 
@@ -181,6 +192,7 @@ class ApiTestCase(TestCase):
     ROLES = ["member"]
     SYSTEM_SCOPE = False
     DOMAIN_SCOPE = False
+    UNSCOPED = False
 
     def setUp(self):
         super().setUp()
@@ -188,5 +200,9 @@ class ApiTestCase(TestCase):
 
     def init_context(self):
         self.app.wsgi_app = TestKeystoneWrapper(
-            self.app.wsgi_app, self.ROLES, self.SYSTEM_SCOPE, self.DOMAIN_SCOPE
+            self.app.wsgi_app,
+            self.ROLES,
+            self.SYSTEM_SCOPE,
+            self.DOMAIN_SCOPE,
+            self.UNSCOPED,
         )

@@ -415,3 +415,34 @@ class TestDomainScopedSecurityRisksAPI(base.ApiTestCase):
         response = self.client.get(f"/v1/security-risks/{risk.id}/")
 
         self.assert404(response)
+
+
+class TestUnscopedSecurityRisksAPI(base.ApiTestCase):
+    ROLES = []
+    UNSCOPED = True
+
+    def test_security_risks_list(self):
+        # Regression: an unscoped token has no project_id, which used to
+        # skip the project filter and list every project's risks.
+        self.create_security_risk(project_id=base.PROJECT_ID)
+        self.create_security_risk(
+            ipaddress='203.0.113.2', project_id=base.PROJECT_ID_2
+        )
+        response = self.client.get("/v1/security-risks/")
+
+        self.assert403(response)
+
+    def test_security_risks_list_all_projects(self):
+        self.create_security_risk(project_id=base.PROJECT_ID)
+        self.create_security_risk(
+            ipaddress='203.0.113.2', project_id=base.PROJECT_ID_2
+        )
+        response = self.client.get("/v1/security-risks/?all_projects=1")
+
+        self.assert403(response)
+
+    def test_security_risk_detail(self):
+        risk = self.create_security_risk(project_id=base.PROJECT_ID)
+        response = self.client.get(f"/v1/security-risks/{risk.id}/")
+
+        self.assert404(response)

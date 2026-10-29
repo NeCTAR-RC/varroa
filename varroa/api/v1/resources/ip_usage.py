@@ -32,11 +32,14 @@ class IPUsageList(base.Resource):
     POLICY_PREFIX = policies.IP_USAGE_PREFIX
     schema = schemas.ip_usage_list
 
-    def _get_ip_usage(self, project_id=None):
+    def _get_ip_usage(self, project_id=None, all_projects=False):
         query = db.session.query(models.IPUsage)
-        if project_id:
-            query = query.filter_by(project_id=project_id)
-        return query
+        if all_projects:
+            return query
+        if not project_id:
+            # Never fall through to an unfiltered query by accident.
+            raise ValueError("project_id is required unless all_projects")
+        return query.filter_by(project_id=project_id)
 
     def get(self, **kwargs):
         try:
@@ -60,13 +63,21 @@ class IPUsageList(base.Resource):
                 self.authorize("list:all")
             except (policy.PolicyNotAuthorized, policy.InvalidScope):
                 flask_restful.abort(403, message="Not authorised")
-            query = self._get_ip_usage(args.get("project_id"))
+            project_id = args.get("project_id")
+            query = self._get_ip_usage(project_id, all_projects=not project_id)
         else:
+            # An unscoped token is treated as project-scoped by
+            # oslo.policy but has no project_id, so it must not list
+            # anything.
+            if self.context.project_id is None:
+                flask_restful.abort(403, message="Not authorised")
             query = self._get_ip_usage(self.context.project_id)
             if self.authorize("list:all", do_raise=False):
                 project_id = args.get("project_id")
                 if args.get("all_projects") or project_id:
-                    query = self._get_ip_usage(project_id)
+                    query = self._get_ip_usage(
+                        project_id, all_projects=not project_id
+                    )
 
         if args.get("ip"):
             query = query.filter_by(ip=args.get("ip"))

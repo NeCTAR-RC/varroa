@@ -90,3 +90,32 @@ class TestSystemMemberIPUsageAPI(base.ApiTestCase):
         response = self.client.get("/v1/ip-usage/")
 
         self.assert403(response)
+
+
+class TestUnscopedIPUsageAPI(base.ApiTestCase):
+    ROLES = []
+    UNSCOPED = True
+
+    def test_ip_usage_list_forbidden(self):
+        # Regression: an unscoped token has no project_id, which used to
+        # skip the project filter and list every project's IP usage.
+        self.create_ip_usage(ip="203.0.113.1", project_id=base.PROJECT_ID)
+        self.create_ip_usage(
+            ip="203.0.113.2",
+            project_id=base.PROJECT_ID_2,
+            port_id=base.PORT_ID_2,
+        )
+        response = self.client.get("/v1/ip-usage/")
+
+        self.assert403(response)
+
+    def test_ip_usage_list_all_projects_forbidden(self):
+        self.create_ip_usage(ip="203.0.113.1", project_id=base.PROJECT_ID)
+        self.create_ip_usage(
+            ip="203.0.113.2",
+            project_id=base.PROJECT_ID_2,
+            port_id=base.PORT_ID_2,
+        )
+        response = self.client.get("/v1/ip-usage/?all_projects=1")
+
+        self.assert403(response)
