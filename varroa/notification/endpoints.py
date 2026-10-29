@@ -108,7 +108,10 @@ class NotificationEndpoints:
     def handle_end(self, port_id, generated):
         LOG.debug("Handle end for %s", port_id)
         try:
-            end = datetime.datetime.strptime(generated, "%Y-%m-%dT%H:%M:%S.%f")
+            # 'generated' is isoformat() output, which omits the fractional
+            # part when microseconds are zero, so a fixed '%f' format would
+            # reject roughly one event in a million.
+            end = datetime.datetime.fromisoformat(generated)
         except (ValueError, TypeError):
             # A malformed timestamp will never parse on redelivery, so log and
             # drop it instead of letting sample() requeue a poison message.
@@ -118,6 +121,9 @@ class NotificationEndpoints:
                 generated,
             )
             return
+        if end.tzinfo is not None:
+            # Timestamps are stored as naive UTC, so normalise any offset.
+            end = end.astimezone(datetime.UTC).replace(tzinfo=None)
 
         ip_usage = (
             db.session.query(models.IPUsage)
