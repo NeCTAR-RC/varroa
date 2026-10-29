@@ -11,6 +11,8 @@
 #    License for the specific language governing permissions and limitations
 #    under the License.
 
+from urllib import parse
+
 import flask
 from flask import request
 import flask_restful
@@ -41,13 +43,30 @@ class Resource(flask_restful.Resource):
         limit = args.get("limit")
         if limit is None:
             limit = API_LIMIT
+        elif limit < 1:
+            flask_restful.abort(
+                400, message="limit must be a positive integer"
+            )
 
-        items = query.paginate(per_page=limit)
+        page = request.args.get("page", 1)
+        try:
+            page = int(page)
+        except (TypeError, ValueError):
+            page = 0
+        if page < 1:
+            flask_restful.abort(400, message="page must be a positive integer")
+
+        items = query.paginate(
+            page=page, per_page=limit, max_per_page=API_LIMIT
+        )
         response = {
             "results": self.schema.dump(items.items),
             "total": items.total,
         }
 
         if items.has_next:
-            response["next"] = f"{request.base_url}?page={items.next_num}"
+            next_args = request.args.to_dict(flat=False)
+            next_args["page"] = [items.next_num]
+            query_string = parse.urlencode(next_args, doseq=True)
+            response["next"] = f"{request.base_url}?{query_string}"
         return response
