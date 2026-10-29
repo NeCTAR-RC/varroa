@@ -23,6 +23,8 @@ class TestPeriodicTaskService(base.TestCase):
         super().setUp()
         self.mock_conf = mock.Mock()
         self.mock_conf.host = 'test-host'
+        self.mock_conf.worker.periodic_task_interval = 61
+        self.mock_conf.worker.reconcile_interval = 127
         self.mock_manager = mock.Mock()
         self.service = periodic.PeriodicTaskService(
             1, self.mock_conf, self.mock_manager
@@ -58,21 +60,27 @@ class TestPeriodicTaskService(base.TestCase):
 
         self.service.run()
 
-        # Verify PeriodicWorker was created with correct callables
+        # Verify PeriodicWorker was created with periodic callables whose
+        # spacing comes from the service's conf at run time
         mock_periodic_worker.assert_called_once()
         callables = mock_periodic_worker.call_args[0][0]
         self.assertEqual(len(callables), 3)
-        self.assertEqual(callables[0][0], self.service.clean_expired_risks)
-        self.assertEqual(callables[0][1], ())
-        self.assertEqual(callables[0][2], {})
-        self.assertEqual(callables[1][0], self.service.reprocess_new_risks)
-        self.assertEqual(callables[1][1], ())
-        self.assertEqual(callables[1][2], {})
-        self.assertEqual(
-            callables[2][0], self.service.reconcile_open_ip_usages
-        )
-        self.assertEqual(callables[2][1], ())
-        self.assertEqual(callables[2][2], {})
+        expected = [
+            ('clean_expired_risks', 61),
+            ('reprocess_new_risks', 61),
+            ('reconcile_open_ip_usages', 127),
+        ]
+        for (func, args, kwargs), (name, spacing) in zip(callables, expected):
+            self.assertTrue(func._is_periodic)
+            self.assertEqual(func._periodic_spacing, spacing)
+            self.assertEqual(args, ())
+            self.assertEqual(kwargs, {})
+            self.mock_manager.reset_mock()
+            func()
+            getattr(self.mock_manager, name).assert_called_once_with()
+            for other, _ in expected:
+                if other != name:
+                    getattr(self.mock_manager, other).assert_not_called()
 
         # Verify thread was created and started
         mock_thread.assert_called_once_with(
