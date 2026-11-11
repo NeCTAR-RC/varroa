@@ -57,6 +57,41 @@ class TestEndpoints(base.TestCase):
         ip_usage = db.session.query(models.IPUsage).get(ip_usage.id)
         self.assertEqual(datetime(2021, 4, 23, 5, 9, 58, 392627), ip_usage.end)
 
+    def test_port_delete_no_fractional_seconds(self, mock_app):
+        # isoformat() omits the fractional part when microseconds are zero;
+        # that form must still end the IP usage rather than being dropped.
+        ip_usage = self.create_ip_usage()
+        ep = endpoints.NotificationEndpoints()
+        payload = self._get_payload("port.delete.end", base.PORT_ID)
+        payload[0]["generated"] = "2024-01-01T00:00:00"
+        result = ep.sample(self.context, "pub-id", "event", payload, {})
+        self.assertEqual(messaging.NotificationResult.HANDLED, result)
+        ip_usage = db.session.query(models.IPUsage).get(ip_usage.id)
+        self.assertEqual(datetime(2024, 1, 1, 0, 0, 0), ip_usage.end)
+
+    def test_port_delete_timezone_aware(self, mock_app):
+        # An offset-aware timestamp is normalised to naive UTC to match the
+        # naive datetimes stored elsewhere.
+        ip_usage = self.create_ip_usage()
+        ep = endpoints.NotificationEndpoints()
+        payload = self._get_payload("port.delete.end", base.PORT_ID)
+        payload[0]["generated"] = "2024-01-01T10:00:00.5+10:00"
+        ep.sample(self.context, "pub-id", "event", payload, {})
+        ip_usage = db.session.query(models.IPUsage).get(ip_usage.id)
+        self.assertEqual(datetime(2024, 1, 1, 0, 0, 0, 500000), ip_usage.end)
+        self.assertIsNone(ip_usage.end.tzinfo)
+
+    def test_port_delete_non_string_timestamp_acked(self, mock_app):
+        # A non-string 'generated' is discarded without raising.
+        ip_usage = self.create_ip_usage()
+        ep = endpoints.NotificationEndpoints()
+        payload = self._get_payload("port.delete.end", base.PORT_ID)
+        payload[0]["generated"] = None
+        result = ep.sample(self.context, "pub-id", "event", payload, {})
+        self.assertEqual(messaging.NotificationResult.HANDLED, result)
+        ip_usage = db.session.query(models.IPUsage).get(ip_usage.id)
+        self.assertIsNone(ip_usage.end)
+
     @mock.patch("varroa.notification.endpoints.clients")
     def test_port_create(self, mock_clients, mock_app):
         port_id = uuidutils.generate_uuid()
